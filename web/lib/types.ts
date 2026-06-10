@@ -119,6 +119,7 @@ export type GenerationBrief = {
   frames: number;
   offer: string;
   cta: string;
+  media_asset_ids?: string[];
 };
 
 export type DriveStatusResponse = {
@@ -143,4 +144,24 @@ export type DriveCatalogResponse = {
   configured: boolean;
   mode: string;
   items: DriveMediaItem[];
+};
+
+// --- Agent pipeline types ---
+
+export type MediaInsight = {
+  asset_id: string;
+  file_name: string;
+  visual_description: string;
+  mood: string;
+  quality_score: number;
+  best_for: string[];
+  avoid_for: string[];
+};
+
+export type BrandContext = {
+  tone_rules: string[];
+  forbidden_words: string[];
+  required_elements: string[];
+  visual_constraints: string[];
+  cta_style: string;
 };

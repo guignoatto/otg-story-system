@@ -41,6 +41,17 @@ export type NewAsset = {
   extracted_text_preview?: string | null;
 };
 
+export async function deleteAsset(id: string): Promise<string | null> {
+  const { data, error } = await supabaseAdmin()
+    .from("assets")
+    .delete()
+    .eq("id", id)
+    .select("storage_path")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.storage_path ?? null;
+}
+
 export async function insertAsset(asset: NewAsset): Promise<Asset> {
   const { data, error } = await supabaseAdmin()
     .from("assets")

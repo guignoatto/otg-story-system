@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { GenerationProgress } from "./GenerationProgress";
 import type {
   Asset,
   CampaignObjective,
@@ -33,18 +34,28 @@ const DEFAULT_BRIEF: Brief = {
   cta: "",
 };
 
+const MAX_SELECTED_MEDIA = 10;
+
 export function Studio({ clients }: Props) {
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [brief, setBrief] = useState<Brief>(DEFAULT_BRIEF);
   const [media, setMedia] = useState<Asset[]>([]);
+  const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([]);
   const [pkg, setPkg] = useState<StoryPackage | null>(null);
   const [aiByFrame, setAiByFrame] = useState<Record<string, Asset>>({});
+  const [generatingFrame, setGeneratingFrame] = useState<Record<string, boolean>>({});
+  const [promptPreview, setPromptPreview] = useState<{ frame: Frame; prompt: string } | null>(null);
+  const [loadingPrompt, setLoadingPrompt] = useState(false);
   const [history, setHistory] = useState<StoryPackage[]>([]);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Selecione um cliente e gere um pacote.");
 
   const client = useMemo(() => clients.find((c) => c.id === clientId), [clients, clientId]);
+  const selectedMedia = useMemo(
+    () => media.filter((asset) => selectedMediaIds.includes(asset.id)),
+    [media, selectedMediaIds]
+  );
 
   useEffect(() => {
     if (!clientId) return;
@@ -60,7 +71,9 @@ export function Studio({ clients }: Props) {
         const histData = await histRes.json();
         const usageData = await usageRes.json();
         if (!active) return;
-        setMedia((mediaData.items ?? []).filter((a: Asset) => a.mime_type.startsWith("image/")));
+        const imageMedia = (mediaData.items ?? []).filter((a: Asset) => a.mime_type.startsWith("image/"));
+        setMedia(imageMedia);
+        setSelectedMediaIds(imageMedia.slice(0, Math.min(MAX_SELECTED_MEDIA, Math.max(DEFAULT_BRIEF.frames, 4))).map((a: Asset) => a.id));
         setHistory(histData.items ?? []);
         setUsage(usageData);
         setPkg(null);
@@ -78,10 +91,26 @@ export function Studio({ clients }: Props) {
     setBrief((prev) => ({ ...prev, [key]: value }));
   }
 
+  function toggleMedia(assetId: string) {
+    setSelectedMediaIds((prev) => {
+      if (prev.includes(assetId)) return prev.filter((id) => id !== assetId);
+      if (prev.length >= MAX_SELECTED_MEDIA) return prev;
+      return [...prev, assetId];
+    });
+  }
+
+  function selectSuggestedMedia() {
+    setSelectedMediaIds(media.slice(0, Math.min(MAX_SELECTED_MEDIA, Math.max(brief.frames, 4))).map((asset) => asset.id));
+  }
+
   async function generate() {
     if (!client) return;
     if (!brief.offer.trim() || !brief.cta.trim()) {
       setMessage("Preencha tema/produto e a chamada orgânica.");
+      return;
+    }
+    if (!selectedMediaIds.length) {
+      setMessage("Selecione pelo menos uma imagem para gerar essa leva de stories.");
       return;
     }
     setBusy(true);
@@ -94,6 +123,7 @@ export function Studio({ clients }: Props) {
           client_id: client.id,
           restaurant_name: client.name,
           ...brief,
+          media_asset_ids: selectedMediaIds,
         }),
       });
       const data = await res.json();
@@ -130,15 +160,67 @@ export function Studio({ clients }: Props) {
     return mediaFor(frame)?.public_url ?? "";
   }
 
-  async function generateAi(frame: Frame) {
+  async function downloadAiImage(frame: Frame) {
+    const asset = aiByFrame[frame.id];
+    if (!asset?.public_url) return;
+    try {
+      const res = await fetch(asset.public_url);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `${client?.slug ?? "frame"}-${frame.idx}-ai.png`;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      window.open(asset.public_url, "_blank");
+    }
+  }
+
+  // Busca o prompt completo montado no servidor e abre o modal de revisão.
+  async function openPromptPreview(frame: Frame) {
     if (!client) return;
     const source = mediaFor(frame);
     if (!source) {
       setMessage("Esse frame não tem uma mídia real associada na biblioteca.");
       return;
     }
-    setBusy(true);
-    setMessage(`Gerando imagem com IA para o frame ${frame.idx}...`);
+    setLoadingPrompt(true);
+    try {
+      const res = await fetch("/api/ai-images/prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: client.id,
+          headline: frame.headline,
+          body: frame.body,
+          cta: frame.cta,
+          visual_direction: frame.visual_direction,
+          layout_style: frame.layout_style,
+          output_format: pkg?.output_format || "stories",
+          objective: pkg?.objective,
+          story_type: pkg?.story_type,
+          offer: pkg?.offer,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || `Erro ${res.status}`);
+      setPromptPreview({ frame, prompt: data.prompt });
+    } catch (err) {
+      setMessage(`Erro ao montar prompt: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setLoadingPrompt(false);
+    }
+  }
+
+  async function generateAi(frame: Frame, promptOverride?: string) {
+    if (!client) return;
+    const source = mediaFor(frame);
+    if (!source) {
+      setMessage("Esse frame não tem uma mídia real associada na biblioteca.");
+      return;
+    }
+    setGeneratingFrame((cur) => ({ ...cur, [frame.id]: true }));
     try {
       const res = await fetch("/api/ai-images/generate", {
         method: "POST",
@@ -153,17 +235,20 @@ export function Studio({ clients }: Props) {
           visual_direction: frame.visual_direction,
           layout_style: frame.layout_style,
           output_format: pkg?.output_format || "stories",
+          objective: pkg?.objective,
+          story_type: pkg?.story_type,
+          offer: pkg?.offer,
           quality: "medium",
+          prompt_override: promptOverride,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || `Erro ${res.status}`);
       setAiByFrame((cur) => ({ ...cur, [frame.id]: data.asset as Asset }));
-      setMessage(`Imagem gerada para o frame ${frame.idx}.`);
     } catch (err) {
       setMessage(`Erro ao gerar com IA: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      setBusy(false);
+      setGeneratingFrame((cur) => ({ ...cur, [frame.id]: false }));
     }
   }
 
@@ -191,9 +276,51 @@ export function Studio({ clients }: Props) {
                 </select>
               </label>
               <div className="upload-status">
-                {media.length} mídia(s) na biblioteca ·{" "}
+                {selectedMedia.length} de {media.length} imagem(ns) selecionada(s) ·{" "}
                 {client && <Link href={`/clientes/${client.id}`}>gerenciar cliente</Link>}
               </div>
+            </article>
+
+            <article className="form-card">
+              <div className="card-title">
+                <div>
+                  <span>Imagens da leva</span>
+                  <small>Escolha até {MAX_SELECTED_MEDIA} fotos para reduzir o contexto da IA</small>
+                </div>
+                <button type="button" className="ghost compact-action" disabled={busy || !media.length} onClick={selectSuggestedMedia}>
+                  Sugerir
+                </button>
+              </div>
+
+              {media.length ? (
+                <div className="media-picker">
+                  {media.map((asset) => {
+                    const checked = selectedMediaIds.includes(asset.id);
+                    const disabled = busy || (!checked && selectedMediaIds.length >= MAX_SELECTED_MEDIA);
+                    return (
+                      <label key={asset.id} className={`media-option${checked ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={() => toggleMedia(asset.id)}
+                        />
+                        <span
+                          className="media-option-thumb"
+                          style={asset.public_url ? { backgroundImage: `url(${asset.public_url})` } : undefined}
+                        >
+                          {!asset.public_url && "IMG"}
+                        </span>
+                        <span className="media-option-name">{asset.file_name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="empty-media-picker">
+                  Nenhuma imagem cadastrada para este cliente.
+                </div>
+              )}
             </article>
 
             <article className="form-card">
@@ -249,7 +376,7 @@ export function Studio({ clients }: Props) {
               </label>
             </article>
 
-            <button type="button" className="primary-action" disabled={busy || !client} onClick={() => void generate()}>
+            <button type="button" className="primary-action" disabled={busy || !client || !selectedMediaIds.length} onClick={() => void generate()}>
               {busy ? "Produzindo..." : "Gerar pacote de stories"}
             </button>
           </div>
@@ -269,7 +396,9 @@ export function Studio({ clients }: Props) {
             )}
           </div>
 
-          {!pkg && (
+          <GenerationProgress busy={busy} />
+
+          {!pkg && !busy && (
             <div className="empty-state">
               <strong>Nenhum pacote gerado ainda.</strong>
               <span>Escolha o cliente, confirme o briefing e clique em gerar.</span>
@@ -289,6 +418,7 @@ export function Studio({ clients }: Props) {
               <div className="frames">
                 {pkg.frames.map((frame) => {
                   const url = imageUrlFor(frame);
+                  const isGenerating = !!generatingFrame[frame.id];
                   return (
                     <div key={frame.id} className="frame">
                       <div className="frame-header">
@@ -299,7 +429,14 @@ export function Studio({ clients }: Props) {
                         className={`creative-preview ${frame.layout_style}`}
                         style={url ? { backgroundImage: `url(${url})` } : undefined}
                       >
-                        <span>{frame.headline}</span>
+                        {isGenerating ? (
+                          <div className="frame-ai-loading">
+                            <div className="frame-ai-spinner" />
+                            <span>Gerando com IA...</span>
+                          </div>
+                        ) : (
+                          <span>{frame.headline}</span>
+                        )}
                       </div>
                       <div className="frame-copy">
                         <p><strong>{frame.headline}</strong></p>
@@ -308,9 +445,20 @@ export function Studio({ clients }: Props) {
                         <p><strong>Visual:</strong> {frame.visual_direction}</p>
                       </div>
                       <div className="frame-actions">
-                        <button type="button" className="ai-generate" disabled={busy || !mediaFor(frame)} onClick={() => void generateAi(frame)}>
-                          Gerar com IA
-                        </button>
+                        {aiByFrame[frame.id] ? (
+                          <>
+                            <button type="button" className="approve" onClick={() => void downloadAiImage(frame)}>
+                              Baixar imagem
+                            </button>
+                            <button type="button" className="ghost" disabled={isGenerating || loadingPrompt} onClick={() => void openPromptPreview(frame)}>
+                              Regenerar
+                            </button>
+                          </>
+                        ) : (
+                          <button type="button" className="ai-generate" disabled={isGenerating || busy || loadingPrompt || !mediaFor(frame)} onClick={() => void openPromptPreview(frame)}>
+                            {isGenerating ? "Gerando..." : "Gerar com IA"}
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -333,6 +481,47 @@ export function Studio({ clients }: Props) {
           )}
         </section>
       </section>
+
+      {promptPreview && (
+        <div className="prompt-modal-overlay" onClick={() => setPromptPreview(null)}>
+          <div className="prompt-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="prompt-modal-header">
+              <div>
+                <h3>Prompt da imagem — Frame {promptPreview.frame.idx}</h3>
+                <p>Revise (e edite, se quiser) o texto que será enviado para a IA junto com a foto.</p>
+              </div>
+            </div>
+            <textarea
+              className="prompt-modal-text"
+              value={promptPreview.prompt}
+              onChange={(e) => setPromptPreview({ ...promptPreview, prompt: e.target.value })}
+            />
+            <div className="prompt-modal-actions">
+              <button type="button" className="ghost" onClick={() => setPromptPreview(null)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => void navigator.clipboard.writeText(promptPreview.prompt)}
+              >
+                Copiar prompt
+              </button>
+              <button
+                type="button"
+                className="ai-generate"
+                onClick={() => {
+                  const { frame, prompt } = promptPreview;
+                  setPromptPreview(null);
+                  void generateAi(frame, prompt);
+                }}
+              >
+                Gerar imagem
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

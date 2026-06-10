@@ -19,7 +19,11 @@ type Body = {
   visual_direction?: string;
   layout_style?: string;
   output_format?: string;
+  objective?: string;
+  story_type?: string;
+  offer?: string;
   quality?: string;
+  prompt_override?: string;
 };
 
 export async function POST(req: NextRequest) {
@@ -40,15 +44,21 @@ export async function POST(req: NextRequest) {
       fileName: source.file_name,
     });
 
-    const prompt = buildImagePrompt({
-      client,
-      headline: body.headline || "",
-      body: body.body || "",
-      cta: body.cta || "",
-      visual_direction: body.visual_direction || "",
-      layout_style: body.layout_style || "editorial",
-      output_format: body.output_format || "stories",
-    });
+    // Se o usuário revisou/editou o prompt no modal, usa o texto dele.
+    const prompt =
+      body.prompt_override?.trim() ||
+      buildImagePrompt({
+        client,
+        headline: body.headline || "",
+        body: body.body || "",
+        cta: body.cta || "",
+        visual_direction: body.visual_direction || "",
+        layout_style: body.layout_style || "editorial",
+        output_format: body.output_format || "stories",
+        objective: body.objective,
+        story_type: body.story_type,
+        offer: body.offer,
+      });
 
     const imageFile = await toFile(prepared, "source.png", { type: "image/png" });
     const result = await openai().images.edit({
@@ -56,7 +66,8 @@ export async function POST(req: NextRequest) {
       image: imageFile,
       prompt,
       size: "1024x1536",
-      quality: (body.quality as "low" | "medium" | "high") || "medium",
+      quality: (body.quality as "low" | "medium" | "high") || "high",
+      // Preserva fielmente o produto/logo da foto original (igual ChatGPT).
     });
 
     const b64 = result.data?.[0]?.b64_json;

@@ -12,6 +12,26 @@ export type ImageBriefInput = {
   visual_direction: string;
   layout_style: string;
   output_format: string;
+  objective?: string;
+  story_type?: string;
+  offer?: string;
+};
+
+const OBJECTIVE_INTENT: Record<string, string> = {
+  vendas: "spark appetite and desire for the product",
+  reservas: "evoke a special, planned occasion",
+  engajamento: "invite interaction and conversation",
+  awareness: "build brand identity and recognition",
+  alcance_local: "highlight the local, neighborhood connection",
+  relacionamento: "create warmth, closeness and everyday routine",
+};
+
+const STORY_TYPE_ANGLE: Record<string, string> = {
+  promocao: "feature the product as today's highlight",
+  bastidor: "an authentic behind-the-scenes feel",
+  prova_social: "a social-proof / testimonial vibe",
+  cardapio: "a menu showcase focused on flavor and texture",
+  urgencia: "a timely reminder for this moment of the day",
 };
 
 function isDeliveryNight(client: ClientProfile): boolean {
@@ -36,43 +56,82 @@ function operationalNote(client: ClientProfile, deliveryNight: boolean): string 
   return "No special operational restrictions were provided.";
 }
 
-/** Port of `_build_ai_image_prompt`: brand-safe, logo-safe organic Stories prompt. */
+/**
+ * Prompt de geração livre: o modelo usa a foto anexada como base, preserva o
+ * produto/embalagem e o integra a um design editorial coeso da marca. Usa todo
+ * o contexto selecionado no cliente (fontes, tom, cores, manual, local) e no
+ * estúdio (objetivo, tipo de conteúdo, tema).
+ */
 export function buildImagePrompt(input: ImageBriefInput): string {
   const { client, output_format } = input;
   const deliveryNight = isDeliveryNight(client);
   const formatNote =
-    output_format === "stories" ? "vertical story 9:16" : "vertical carousel cover 4:5";
-  const organicActionRules =
-    output_format === "stories"
-      ? "For Instagram Stories, valid organic actions are: reply by DM, emoji reaction, share/send in Direct, or continue watching the next story. Do not use save/salve/guardar, comments, feed saves, fake buttons, or link prompts unless a real native sticker will be added later outside the image."
-      : "For carousel/feed content, save/share/comment language can be used when it fits the concept, but do not draw fake app buttons or fake Instagram UI.";
+    output_format === "stories" ? "vertical Instagram story 9:16" : "vertical carousel cover 4:5";
   const colors = client.color_palette.length
     ? client.color_palette.slice(0, 5)
     : ["#0B2A1E", "#4598B2", "#F0B05F"];
   const colorNote = colors.join(", ");
 
+  // Contexto de marca e briefing (tudo que foi selecionado no cliente e no estúdio).
+  const fonts = client.typography.filter(Boolean);
+  const fontNote = fonts.length
+    ? `Typography: use lettering that closely resembles these brand fonts: ${fonts.join(", ")}.`
+    : "Typography: use clean, professional lettering with strong hierarchy.";
+  const toneNote = client.tone ? `Brand tone of voice: ${client.tone}.` : "";
+  const locality = [client.neighborhood, client.city].filter(Boolean).join(", ");
+  const localNote = locality ? `Local context: restaurant located in ${locality}.` : "";
+  const manualText = [client.brand_manual_summary, client.synthetic_manual]
+    .filter(Boolean)
+    .join(" ");
+  const manualNote = manualText ? `Brand manual summary (follow it): ${manualText}.` : "";
+  const objectiveNote = input.objective && OBJECTIVE_INTENT[input.objective]
+    ? `Campaign objective: ${OBJECTIVE_INTENT[input.objective]}.`
+    : "";
+  const angleNote = input.story_type && STORY_TYPE_ANGLE[input.story_type]
+    ? `Content angle: ${STORY_TYPE_ANGLE[input.story_type]}.`
+    : "";
+  const offerNote = input.offer ? `Theme/product being featured: ${input.offer}.` : "";
+
   return [
-    `Create a premium social media creative for ${client.name}, a restaurant brand served by OTG Midia.`,
-    `Brand context for mood only: ${client.name}. Do not render the brand name as a logo or wordmark.`,
+    `Create a ${formatNote} creative for ${client.name}, a Brazilian restaurant brand.`,
     operationalNote(client, deliveryNight),
-    "Use the provided image as the real product/order reference and preserve the dish/order accurately. Do not invent a different dish. Improve lighting, composition, background and editorial polish while keeping the food realistic and appetizing.",
-    `Format: ${formatNote}. Brand colors: ${colorNote}.`,
-    "Brand feeling: respect the restaurant's own brand manual, tone, cuisine, and positioning. The creative should feel appetizing, polished, local, and professionally art-directed.",
-    "CRITICAL BRAND SAFETY RULE: never create, redraw, restyle, complete, enhance, sharpen, reconstruct, move, duplicate, or invent any logo, wordmark, crown, roof icon, flag icon, monogram, embroidered mark, packaging logo, glass logo, napkin logo, or any stylized text that looks like a brand mark. Do not place any logo at the top, bottom, corner, or center of the creative. If a logo or brand mark already exists inside the source photo, preserve it exactly as photographed: same blur, crop, angle, distortion, partial visibility, and imperfections. Do not fix it. If the logo would be unclear, leave it unclear or crop around it; never regenerate it. The official logo will be added later by the design system outside the AI generation.",
-    organicActionRules,
-    `Creative layout style: ${input.layout_style}. Visual direction: ${input.visual_direction}.`,
-    `Main headline to include if legible: ${input.headline}.`,
-    `Support copy: ${input.body}. Organic story interaction cue: ${input.cta}.`,
-    "Use very little text on the image. Do not create polls, quizzes, question boxes, sliders, reaction bars, Instagram UI elements, fake buttons, or interactive stickers. Do not invent poll options, menu items, phone numbers, handles, prices, addresses, or extra claims. Treat the organic cue as a small editorial text badge only, never as an app component.",
-    "Double-check Portuguese spelling and accents. If text clarity is uncertain, keep only the headline and the organic cue.",
-    "This is organic Instagram Stories content, not a paid Meta ad. Do not add WhatsApp buttons, fake app buttons, click-to-WhatsApp CTAs, prices, hard-sell language, or ad-style conversion buttons. Prefer quiet organic behaviors that are native to the selected format.",
-    "Use clean Portuguese typography, strong hierarchy, enough safe margins for Instagram UI, and avoid clutter. The final image should feel like a polished restaurant story designed by a senior art director.",
-  ].join(" ");
+
+    // --- Contexto de marca + briefing ---
+    toneNote,
+    localNote,
+    manualNote,
+    objectiveNote,
+    angleNote,
+    offerNote,
+
+    // --- Uso da foto base (preservar produto) ---
+    "Use the attached photo as the base. PRESERVE the product/packaging exactly as it is — same shape, colors, logo, label, and texture. Do not invent a different dish or product. You may improve the framing, lighting, background and overall art direction so the photo blends into one cohesive editorial layout.",
+
+    // --- Design e cores ---
+    `Use ONLY these brand colors in the design and graphic elements: ${colorNote}. The creative should feel premium, appetizing, and professionally art-directed.`,
+    fontNote,
+
+    // --- Texto ---
+    `Headline (short, bold, Portuguese): "${input.headline}".`,
+    `Call-to-action as a small rounded editorial badge/pill: "${input.cta}".`,
+    input.body ? `Supporting line in smaller type if there is room: "${input.body}".` : "",
+    `Art direction reference: ${input.visual_direction}.`,
+
+    // --- Logo safety ---
+    "LOGO SAFETY: never invent, redraw, or add a new logo or wordmark. If a logo already exists in the photo, keep it as photographed. Do not place extra brand marks.",
+
+    // --- Restrições ---
+    "Portuguese spelling and accents must be perfect. Keep text minimal with strong hierarchy.",
+    "No polls, quizzes, sliders, fake Instagram UI, fake buttons, interactive stickers, phone numbers, prices, or addresses. This is organic content, not a paid ad.",
+    "The result must look like a polished restaurant story designed by a senior art director.",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /**
- * Normalizes a source photo (incl. iPhone HEIC) into a clean PNG buffer
- * suitable for the OpenAI image edit API. Port of `_prepare_openai_image`.
+ * Normaliza a foto de origem (inclusive HEIC do iPhone) em um PNG limpo,
+ * pronto para a API de edição de imagem da OpenAI (geração livre).
  */
 export async function prepareSourceImage(params: {
   bytes: Buffer;
@@ -87,15 +146,14 @@ export async function prepareSourceImage(params: {
 
   let input = bytes;
   if (isHeic) {
-    // sharp builds usually lack libheif; decode HEIC to JPEG first.
+    // sharp normalmente não tem libheif; decodifica HEIC para JPEG antes.
     const out = await heicConvert({ buffer: bytes as Buffer, format: "JPEG", quality: 0.95 });
     input = Buffer.from(out);
   }
 
   return sharp(input)
-    .rotate() // apply EXIF orientation
-    .resize({ width: 4096, height: 4096, fit: "inside", withoutEnlargement: true })
-    .flatten({ background: "#ffffff" })
+    .rotate() // aplica orientação EXIF
+    .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
     .png()
     .toBuffer();
 }

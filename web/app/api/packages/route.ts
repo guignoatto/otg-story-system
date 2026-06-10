@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getClient } from "@/lib/data/clients";
 import { listAssets } from "@/lib/data/assets";
 import { insertPackageWithFrames, type NewFrame } from "@/lib/data/packages";
-import { generateFrames } from "@/lib/generation/frames";
+import { generatePackage } from "@/lib/generation/pipeline";
 import type { GenerationBrief } from "@/lib/types";
 
 export const maxDuration = 120;
+const MAX_SELECTED_MEDIA = 10;
 
 function estimateCostBrl(frames: number): number {
   return Number((0.25 + frames * 0.12).toFixed(2));
@@ -21,13 +22,33 @@ export async function POST(req: NextRequest) {
     if (!client) return NextResponse.json({ detail: "Cliente não encontrado." }, { status: 404 });
 
     const frameCount = Math.max(3, Math.min(brief.frames || 4, 10));
-    const media = (await listAssets(client.id, "media")).filter((a) =>
+    const allMedia = (await listAssets(client.id, "media")).filter((a) =>
       a.mime_type.startsWith("image/")
     );
+    const selectedIds = Array.isArray(brief.media_asset_ids)
+      ? brief.media_asset_ids.slice(0, MAX_SELECTED_MEDIA)
+      : [];
+    const selectedIdSet = new Set(selectedIds);
+    const media = selectedIds.length
+      ? allMedia.filter((asset) => selectedIdSet.has(asset.id))
+      : allMedia.slice(0, MAX_SELECTED_MEDIA);
 
-    const result = await generateFrames({
+    if (!media.length) {
+      return NextResponse.json(
+        { detail: "Selecione pelo menos uma imagem válida do cliente para gerar o pacote." },
+        { status: 400 }
+      );
+    }
+    const sanitizedBrief: GenerationBrief = {
+      ...brief,
+      client_id: client.id,
+      frames: frameCount,
+      media_asset_ids: media.map((asset) => asset.id),
+    };
+
+    const result = await generatePackage({
       client,
-      brief: { ...brief, client_id: client.id, frames: frameCount },
+      brief: sanitizedBrief,
       media,
     });
 
@@ -57,11 +78,13 @@ export async function POST(req: NextRequest) {
       frames_count: frameCount,
       offer: brief.offer || "",
       cta: brief.cta || "",
-      rationale: result.rationale,
+      rationale: result.qa_notes
+        ? `${result.rationale}\n\nQA: ${result.qa_notes}`
+        : result.rationale,
       brand_score: result.brand_score,
       performance_score: result.performance_score,
       cost_brl: estimateCostBrl(frameCount),
-      brief,
+      brief: sanitizedBrief,
       frames,
     });
 

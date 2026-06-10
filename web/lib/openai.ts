@@ -15,4 +15,7 @@ export function openai(): OpenAI {
 }
 
 export const TEXT_MODEL = process.env.OPENAI_TEXT_MODEL || "gpt-4o-2024-08-06";
-export const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
+// gpt-image-1 renderiza texto/fontes mal. Modelos mais novos (gpt-image-1.5,
+// gpt-image-2, chatgpt-image-latest) renderizam texto muito melhor — é o que o
+// site do ChatGPT usa. Configurável via OPENAI_IMAGE_MODEL.
+export const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5";

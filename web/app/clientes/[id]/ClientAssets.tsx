@@ -45,6 +45,18 @@ export function ClientAssets({ clientId, initialMedia, initialManuals, mediaSour
     }
   }
 
+  async function deleteAssetFromLibrary(id: string, role: AssetRole) {
+    try {
+      const res = await fetch(`/api/assets/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`Erro ${res.status}`);
+      if (role === "manual") setManuals((cur) => cur.filter((a) => a.id !== id));
+      else setMedia((cur) => cur.filter((a) => a.id !== id));
+      setStatus(role === "manual" ? "Manual removido." : "Mídia removida.");
+    } catch {
+      setStatus("Não foi possível remover o arquivo agora.");
+    }
+  }
+
   async function importDrive() {
     if (!mediaSourceUrl) {
       setStatus("Cadastre a pasta do Google Drive neste cliente antes de importar.");
@@ -96,11 +108,28 @@ export function ClientAssets({ clientId, initialMedia, initialManuals, mediaSour
           onChange={(e) => void upload("manual", e.target.files)}
         />
         {manuals.map((m) => (
-          <div key={m.id} className="drive-status">
-            <strong>{m.file_name}</strong>
+          <div key={m.id} className="drive-status manual-analysis-card">
+            <div className="manual-analysis-head">
+              <strong>{m.file_name}</strong>
+              <button
+                type="button"
+                className="ghost compact-action"
+                onClick={() => void deleteAssetFromLibrary(m.id, "manual")}
+                disabled={busy}
+              >
+                Remover
+              </button>
+            </div>
             {m.detected_colors.length > 0 && <div>Cores: {m.detected_colors.join(", ")}</div>}
             {m.detected_typography.length > 0 && <div>Fontes: {m.detected_typography.join(", ")}</div>}
             {m.detected_tone && <div>Tom: {m.detected_tone}</div>}
+            {m.notes && (
+              <div className="manual-analysis-notes">
+                {m.notes.split("\n").filter(Boolean).map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </article>
@@ -115,7 +144,7 @@ export function ClientAssets({ clientId, initialMedia, initialManuals, mediaSour
         <input
           ref={mediaInput}
           type="file"
-          accept="image/*,video/*"
+          accept="image/*,video/*,.heic,.heif"
           multiple
           disabled={busy}
           onChange={(e) => void upload("media", e.target.files)}
@@ -128,7 +157,7 @@ export function ClientAssets({ clientId, initialMedia, initialManuals, mediaSour
         <div className="drive-catalog">
           {media.length === 0 && <div className="muted">Nenhuma mídia ainda.</div>}
           {media.map((asset) => (
-            <div key={asset.id} className="drive-catalog-item" style={{ gridTemplateColumns: "64px 1fr" }}>
+            <div key={asset.id} className="drive-catalog-item" style={{ gridTemplateColumns: "64px 1fr auto" }}>
               <div className="drive-thumb">
                 {asset.mime_type.startsWith("image/") && asset.public_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -141,6 +170,15 @@ export function ClientAssets({ clientId, initialMedia, initialManuals, mediaSour
                 <span className="drive-file-name">{asset.file_name}</span>
                 <span className="drive-file-meta">{asset.mime_type}</span>
               </div>
+              <button
+                type="button"
+                onClick={() => void deleteAssetFromLibrary(asset.id, "media")}
+                disabled={busy}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: "4px 8px", fontSize: "16px", lineHeight: 1 }}
+                title="Remover mídia"
+              >
+                ×
+              </button>
             </div>
           ))}
         </div>
