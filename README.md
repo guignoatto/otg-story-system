@@ -1,170 +1,68 @@
-# OTG Story System
+# OTG Story System — Creative OS
 
-Sistema de geracao de stories para clientes da OTG Midia com pipeline de 9 agentes:
+App full-stack (Next.js + TypeScript) para gerar pacotes de stories de restaurantes,
+com dados e arquivos persistidos no Supabase e geração via OpenAI.
 
-1. Briefing
-2. Brand Guard
-3. Trend & References
-4. Content Strategy
-5. Copywriting
-6. Media Curator
-7. Art Direction
-8. Creative Generator
-9. QA & Performance
+## Arquitetura
 
-## Estrutura
+- **`web/`** — app Next.js (App Router). Frontend + API (route handlers) no mesmo projeto.
+- **Supabase** — Postgres (clientes, pacotes, frames, metadados de assets) + Storage (imagens e manuais no bucket `client-assets`).
+- **OpenAI** — geração dos frames (uma chamada estruturada que substituiu o antigo pipeline de 9 agentes) e edição de imagem (`gpt-image`).
+- **Google Drive** (opcional) — importação de mídias via `googleapis` + service account.
 
-- `backend/`: API FastAPI + orquestracao multiagente
-- `frontend/`: interface web React + Vite com fluxo de 3 cliques
-- `frontend/legacy/`: copia da versao vanilla anterior, mantida como seguranca da refatoracao
+Pensado para deploy no **Vercel** (um único projeto).
 
-## MVP atual (foco operacional OTG)
+## Estrutura de `web/`
 
-Fluxo em 3 cliques:
+- `app/` — páginas (`/` estúdio, `/clientes`, `/clientes/[id]`) e rotas de API em `app/api/`.
+- `lib/` — acesso a dados (`lib/data/*`), Supabase (`lib/supabase/*`), Storage, geração (`lib/generation/frames.ts` e `image.ts`), Drive e análise de manual.
 
-1. Preencher cliente + campanha + manual de marca
-2. Clicar em `Gerar stories`
-3. `Aprovar pacote` e `Exportar JSON`
+## Modelo de dados (Supabase)
 
-Recursos prontos:
+- `clients` — restaurante, marca, paleta, tipografia, regras operacionais, manual.
+- `assets` — arquivos (role `manual` | `media` | `ai`) com caminho no Storage e metadados.
+- `packages` — pacotes gerados por cliente (objetivo, formato, custo, scores, rationale).
+- `frames` — telas de cada pacote (headline, body, cta, layout, mídia e imagem IA).
 
-- Geracao de pacote com 3-10 frames
-- Regeneracao de frame individual (sem perder o resto)
-- Historico por cliente
-- Resumo de uso e custo estimado por cliente
-- Upload de manual de marca em PDF/doc/imagem
-- Upload de fotos e videos reais do restaurante
-- Importacao de fotos e videos por Google Drive do cliente
-- Escolha entre formato Stories e Carrossel
+## Rodar localmente
 
-## APIs recomendadas para producao
-
-1. OpenAI Responses API para orquestracao e copy/estrategia
-2. OpenAI Image Generation (`gpt-image-2`) para criativos
-3. Meta Graph/Marketing API para insights e distribuicao de campanhas
-4. Notion API + Make para fluxo operacional interno
-
-## Contrato de endpoints (backend OTG)
-
-Base URL local: `http://127.0.0.1:8000`
-
-- `POST /v1/generations`
-  - cria job de geracao por cliente
-  - entrada: `client_id` + `campaign`
-  - saida: `job_id`, status, custo estimado e resultado quando concluido
-
-- `POST /v1/assets/upload`
-  - recebe manual de marca, fotos e videos reais
-  - entrada: `client_id`, `role` (`manual` ou `media`) e arquivos
-  - saida: lista dos arquivos recebidos para usar na geracao
-
-- `GET /v1/drive/status`
-  - mostra se a Google Drive API privada esta configurada
-  - quando nao estiver, o sistema usa apenas fallback de pasta publica
-
-- `POST /v1/assets/import-drive`
-  - importa imagens/videos da pasta do Google Drive do cliente
-  - com service account configurada, funciona com pastas privadas compartilhadas
-  - sem service account, tenta apenas pasta publica/compartilhavel por link
-
-- `POST /v1/drive/catalog`
-  - lista imagens/videos da pasta do Google Drive sem baixar os arquivos
-  - exige Google Drive API privada com service account
-  - retorna nome, tipo, tamanho, data, miniatura/link e ID do arquivo
-
-- `POST /v1/assets/import-drive-selected`
-  - importa apenas os arquivos do Drive selecionados pelo ID
-  - evita baixar a pasta inteira do cliente
-
-- `GET /v1/generations/{job_id}`
-  - consulta status de uma geracao
-
-- `GET /v1/clients/{client_id}/generations`
-  - lista historico de jobs do cliente
-
-- `GET /v1/clients/{client_id}/usage`
-  - resumo de uso/custo estimado do cliente
-
-- `POST /generate`
-  - endpoint legado do MVP (sincrono) para testes rapidos
-
-## Exemplo rapido de criacao de job
+Pré-requisito: Node.js 20+.
 
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/generations \
-  -H "Content-Type: application/json" \
-  -d '{
-    "client_id": "churrascaria-santana",
-    "campaign": {
-      "restaurant_name": "Churrascaria Santana",
-      "objective": "vendas",
-      "offer": "Rodizio + sobremesa gratis",
-      "cta": "Clique e chame no WhatsApp",
-      "story_type": "promocao",
-      "frames": 4,
-      "manual": {
-        "brand_name": "Churrascaria Santana",
-        "tone_of_voice": "acolhedor e direto",
-        "color_palette": ["#F97316", "#111827", "#FFFFFF"],
-        "typography": ["Poppins", "Montserrat"],
-        "city": "Porto Alegre",
-        "neighborhood": "Moinhos de Vento"
-      }
-    }
-  }'
-```
-
-## Como abrir sem entender programacao
-
-Pre-requisito para a nova interface React: instalar Node.js, que ja vem com `npm`.
-
-Opcoes:
-
-- Pelo site: `https://nodejs.org`
-- Pelo Homebrew: `brew install node`
-
-No Mac, de dois cliques no arquivo:
-
-`ABRIR_MVP.command`
-
-Ele prepara o sistema, liga o backend, abre a tela no navegador e deixa tudo rodando.
-
-Na primeira vez ele pode demorar um pouco porque instala as dependencias.
-
-Na tela, envie primeiro o manual de marca e as fotos/videos. Depois clique em `Gerar stories`.
-
-Para conectar pastas privadas do Google Drive, siga:
-
-`docs/google-drive-setup.md`
-
-Resumo rapido: copie `backend/.env.example` para `backend/.env`, preencha `GOOGLE_APPLICATION_CREDENTIALS` com o caminho do JSON da service account e compartilhe as pastas dos clientes com o e-mail dessa service account.
-
-## Como rodar manualmente
-
-### 1) Backend
-
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
-
-### 2) Frontend
-
-```bash
-cd frontend
+cd web
+cp .env.example .env.local   # preencha as chaves do Supabase e OpenAI
 npm install
 npm run dev
 ```
 
-Abra `http://127.0.0.1:5500`.
+Abra `http://localhost:3000`.
 
-## Proxima fase (apos MVP)
+No Mac, alternativamente dê dois cliques em `ABRIR_MVP.command`.
 
-1. Fila assincrona (Redis + worker)
-2. Persistencia real (PostgreSQL)
-3. Integracao real com OpenAI para copy + imagem
-4. Integracao com Notion/Make/Reportei
-5. Aprendizado com performance por criativo
+### Variáveis de ambiente
+
+Veja `web/.env.example`. Necessárias: `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`.
+Opcionais: `OPENAI_IMAGE_MODEL`, `OPENAI_TEXT_MODEL`, `GOOGLE_SERVICE_ACCOUNT_JSON`.
+
+## Fluxo de uso
+
+1. **Clientes** (`/clientes`) — cadastre/edite o restaurante: marca, regras operacionais,
+   manual (PDF/texto, com extração de cores/fontes/tom) e mídias reais (upload ou Google Drive).
+2. **Estúdio** (`/`) — escolha o cliente, defina objetivo/tema/chamada e gere o pacote.
+   Cada frame pode receber uma imagem gerada com IA a partir das mídias reais.
+3. Histórico e custo por cliente ficam salvos no banco.
+
+## Deploy no Vercel (resumo)
+
+1. Importar o repositório no Vercel apontando o root para `web/`.
+2. Configurar as variáveis de ambiente (as mesmas do `.env.local`).
+3. As rotas de geração já definem `maxDuration` adequado para a edição de imagem.
+
+> Atenção: rotacione qualquer chave que tenha sido exposta antes de ir a produção.
+
+## Google Drive (opcional)
+
+Defina `GOOGLE_SERVICE_ACCOUNT_JSON` com o JSON da service account (em uma linha) e
+compartilhe as pastas dos clientes com o e-mail dessa conta. Detalhes em
+`docs/google-drive-setup.md`.
