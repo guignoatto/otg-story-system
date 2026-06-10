@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OTG Creative OS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="studio-hero">
+        <nav class="brand-row" aria-label="Navegacao principal">
+          <div class="brand-lockup">
+            <img class="brand-logo" src="assets/otg-logo-horizontal.png" alt="OTG Midia" />
+            <div>
+              <strong>Creative OS</strong>
+              <span>Story Lab para restaurantes</span>
+            </div>
+          </div>
+          <div class="topbar-actions">
+            <button type="button" id="load-history" class="ghost">Historico</button>
+          </div>
+        </nav>
+
+        <section class="hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow">OTG Midia · conteudo organico</p>
+            <h1>Crie stories com padrao OTG, usando midias reais e bom senso de restaurante.</h1>
+            <p>
+              O sistema combina briefing, manual de marca, midias reais, agentes de copy e QA para pre-aprovar o criativo antes de gastar credito com imagem.
+            </p>
+          </div>
+
+          <aside class="client-status-card" aria-label="Cliente ativo">
+            <span class="kicker">Restaurante ativo</span>
+            <strong id="active-client-name">Heim</strong>
+            <p>Troque o cliente no briefing. As regras abaixo guiam os agentes e travam ideias fora de contexto.</p>
+            <div id="client-rules" class="rule-strip">
+              <span>So delivery</span>
+              <span>Periodo noturno</span>
+              <span>Sem almoco</span>
+              <span>Sem salao/reserva</span>
+            </div>
+          </aside>
+        </section>
+
+        <section class="workflow-strip" aria-label="Fluxo do criativo">
+          <div><span>01</span><strong>Cliente</strong><small>Marca e contexto</small></div>
+          <div><span>02</span><strong>Campanha</strong><small>Objetivo e tema</small></div>
+          <div><span>03</span><strong>Midias</strong><small>Fotos reais</small></div>
+          <div><span>04</span><strong>Aprovacao</strong><small>IA e download</small></div>
+        </section>
+      </header>
+
+      <section class="content-grid">
+        <section class="panel control-panel">
+          <div class="section-heading">
+            <span class="section-number">01</span>
+            <div>
+              <h2>Briefing de criacao</h2>
+              <p>Preencha o minimo necessario. O resto fica salvo como contexto do restaurante.</p>
+            </div>
+          </div>
+
+          <form id="campaign-form" class="brief-form">
+            <article class="form-card spotlight-card">
+              <div class="card-title">
+                <div>
+                  <span>Restaurante</span>
+                  <small>Selecione um cliente ou cadastre outro</small>
+                </div>
+              </div>
+              <label>Cliente salvo
+                <select id="client-select"></select>
+              </label>
+              <div class="two-columns">
+                <label>Nome do restaurante
+                  <input id="restaurant-name" name="restaurant_name" value="Heim" required />
+                </label>
+                <label>ID interno OTG
+                  <input id="client-id" name="client_id" value="heim" required />
+                </label>
+              </div>
+              <button type="button" id="save-client" class="ghost full-width">Salvar / atualizar restaurante</button>
+            </article>
+
+            <article class="form-card">
+              <div class="card-title">
+                <div>
+                  <span>Campanha</span>
+                  <small>O que os stories precisam causar</small>
+                </div>
+              </div>
+              <div class="two-columns">
+                <label>Objetivo
+                  <select name="objective">
+                    <option value="vendas">Vendas organicas</option>
+                    <option value="reservas">Ocasião planejada</option>
+                    <option value="engajamento">Engajamento</option>
+                    <option value="awareness">Awareness</option>
+                    <option value="alcance_local">Alcance local</option>
+                    <option value="relacionamento">Relacionamento</option>
+                  </select>
+                </label>
+                <label>Formato
+                  <select name="output_format">
+                    <option value="stories">Stories</option>
+                    <option value="carrossel">Carrossel</option>
+                  </select>
+                </label>
+              </div>
+              <div class="two-columns">
+                <label>Tipo de conteudo
+                  <select name="story_type">
+                    <option value="promocao">Destaque do dia</option>
+                    <option value="bastidor">Bastidor</option>
+                    <option value="prova_social">Prova social</option>
+                    <option value="cardapio">Cardapio</option>
+                    <option value="urgencia">Lembrete</option>
+                  </select>
+                </label>
+                <label>Telas
+                  <input type="number" name="frames" min="3" max="10" value="4" />
+                </label>
+              </div>
+              <label>Tema ou produto
+                <input name="offer" value="Pedido especial da noite" required />
+              </label>
+              <label>Chamada organica
+                <input name="cta" value="Mande para quem pediria junto" required />
+              </label>
+            </article>
+
+            <article class="form-card">
+              <div class="card-title">
+                <div>
+                  <span>Regras operacionais</span>
+                  <small>O QA barra o que nao fizer sentido</small>
+                </div>
+              </div>
+              <label>Observacoes do cliente
+                <textarea name="client_notes" rows="5">Heim e apenas delivery.
+Funciona a noite.
+Nao mencionar almoco.
+Nao mencionar salao, reserva, visita ou mesa no restaurante.</textarea>
+              </label>
+              <div class="two-columns">
+                <label>Cidade
+                  <input name="city" value="Porto Alegre" />
+                </label>
+                <label>Bairro ou regiao
+                  <input name="neighborhood" value="" placeholder="Opcional" />
+                </label>
+              </div>
+            </article>
+
+            <article class="form-card asset-card">
+              <div class="card-title">
+                <div>
+                  <span>Marca</span>
+                  <small>Manual oficial ou manual sintetico</small>
+                </div>
+              </div>
+              <label>Manual de marca
+                <input id="brand-manual-file" type="file" accept=".pdf,.doc,.docx,.txt,image/*" />
+              </label>
+              <div id="manual-upload-status" class="upload-status"></div>
+              <div id="manual-insights" class="insights"></div>
+
+              <details class="technical-details">
+                <summary>Ajustes opcionais de marca</summary>
+                <label>Tom de voz
+                  <input name="tone_of_voice" value="tradicional e acolhedor" />
+                </label>
+                <label>Paleta provisoria
+                  <input name="color_palette" value="#0B2A1E,#4598B2,#F0B05F" />
+                </label>
+                <label>Tipografia provisoria
+                  <input name="typography" value="Dragon EF,Quiche Display" />
+                </label>
+              </details>
+            </article>
+
+            <article class="form-card asset-card">
+              <div class="card-title">
+                <div>
+                  <span>Midias reais</span>
+                  <small>Base visual para a IA</small>
+                </div>
+              </div>
+              <label>Pasta de midias do restaurante
+                <input
+                  name="media_source_url"
+                  value="https://drive.google.com/drive/folders/1iSIrPzJbNbl0II8AqSpEaKkIFTRzz9Na?usp=sharing"
+                />
+              </label>
+              <div id="drive-status" class="drive-status">Verificando conexao com Google Drive...</div>
+              <div class="button-row">
+                <button type="button" id="load-drive-catalog" class="ghost">Ver catalogo do Drive</button>
+                <button type="button" id="import-drive" class="ghost">Importar primeiras 12</button>
+                <button type="button" id="load-local-media" class="ghost">Usar biblioteca local</button>
+              </div>
+              <div id="drive-catalog" class="drive-catalog" hidden></div>
+              <button type="button" id="import-selected-drive" class="ghost full-width" disabled>Importar selecionadas</button>
+              <label>Upload manual de midias
+                <input id="media-files" type="file" accept="image/*,video/*" multiple />
+              </label>
+              <div id="media-upload-status" class="upload-status"></div>
+            </article>
+          </form>
+        </section>
+
+        <section class="panel result-panel">
+          <div class="result-heading">
+            <div class="heading-inline">
+              <span class="section-number">02</span>
+              <div>
+                <h2>Mesa de aprovacao</h2>
+                <p>Valide copy, midia e regras antes de pedir a imagem final com IA.</p>
+              </div>
+            </div>
+            <div class="result-actions">
+              <button id="approve-pack" class="approve" type="button">Aprovar</button>
+              <button id="download-ai-pack" class="ghost" type="button">Baixar imagens IA</button>
+              <button id="export-pack" class="ghost" type="button">Exportar JSON</button>
+            </div>
+          </div>
+
+          <div id="meta" class="meta-box empty-state">
+            <strong>Nenhum pacote gerado ainda.</strong>
+            <span>Escolha o restaurante, confirme as regras e clique em Gerar pacote.</span>
+          </div>
+
+          <div id="frames" class="frames"></div>
+
+          <section class="audit-grid">
+            <details class="technical-details audit-card">
+              <summary>Agentes e travas</summary>
+              <ul id="trace"></ul>
+            </details>
+            <details class="technical-details audit-card">
+              <summary>Historico do restaurante</summary>
+              <div id="usage" class="usage"></div>
+              <ul id="history" class="history"></ul>
+            </details>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <aside id="loading-tab" class="loading-tab" hidden aria-live="polite" aria-busy="true">
+      <div class="loading-spinner" aria-hidden="true"></div>
+      <div>
+        <strong id="loading-title">Produzindo postagem</strong>
+        <span id="loading-detail">Os agentes estao montando o criativo.</span>
+      </div>
+    </aside>
+
+    <div class="floating-cta-bar" aria-label="Acao principal">
+      <button type="submit" form="campaign-form" id="generate-fixed" class="primary-action">
+        Gerar pacote de stories
+      </button>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
