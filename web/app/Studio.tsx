@@ -363,7 +363,18 @@ export function Studio({ clients }: Props) {
                 </label>
                 <label className="field-control">
                   Telas
-                  <input type="number" min={3} max={10} value={brief.frames} disabled={busy} onChange={(e) => setBriefField("frames", Number(e.target.value))} />
+                  <input
+                    type="number"
+                    min={3}
+                    max={10}
+                    value={brief.frames}
+                    disabled={busy}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      if (Number.isNaN(value)) return;
+                      setBriefField("frames", Math.max(3, Math.min(10, Math.trunc(value))));
+                    }}
+                  />
                 </label>
               </div>
               <label className="field-control">

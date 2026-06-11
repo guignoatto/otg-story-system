@@ -45,9 +45,14 @@ export async function generatePackage(params: {
     brief,
   });
 
+  // Reconcilia por índice: usa a versão revisada pelo QA quando existir,
+  // mantendo a contagem original mesmo que o QA omita ou adicione frames.
+  const qaByIndex = new Map(qa.frames.map((f) => [f.index, f]));
+  const frames = generation.frames.map((f) => qaByIndex.get(f.index) ?? f);
+
   return {
     ...generation,
-    frames: qa.frames,
+    frames,
     qa_notes: qa.qa_notes,
   };
 }

@@ -188,10 +188,25 @@ export async function generateFrames(params: {
   if (!raw) throw new Error("A IA não retornou conteúdo para o pacote.");
   const parsed = JSON.parse(raw) as GenerationResult;
 
-  // Normaliza índices e garante o número de frames pedido.
+  // Normaliza índices e garante o número de frames pedido (trunca excesso).
   parsed.frames = parsed.frames
     .slice(0, params.brief.frames)
     .map((f, i) => ({ ...f, index: i + 1 }));
+
+  // Se a IA gerou menos frames do que o pedido, completa repetindo o último
+  // frame (ou um placeholder, se nenhum foi retornado) até atingir a contagem.
+  while (parsed.frames.length < params.brief.frames) {
+    const base: GeneratedFrame = parsed.frames[parsed.frames.length - 1] ?? {
+      index: 0,
+      headline: "",
+      body: "",
+      cta: "",
+      visual_direction: "",
+      layout_style: LAYOUT_STYLES[0],
+      media_filename: null,
+    };
+    parsed.frames.push({ ...base, index: parsed.frames.length + 1 });
+  }
 
   return parsed;
 }

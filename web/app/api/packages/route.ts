@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
       objective: brief.objective,
       story_type: brief.story_type,
       output_format: brief.output_format || "stories",
-      frames_count: frameCount,
+      frames_count: frames.length,
       offer: brief.offer || "",
       cta: brief.cta || "",
       rationale: result.qa_notes
