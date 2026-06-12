@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClient } from "@/lib/data/clients";
-import { buildImagePrompt } from "@/lib/generation/image";
+import { buildImagePrompt } from "@/lib/generation/image-prompt";
 
 type Body = {
   client_id: string;

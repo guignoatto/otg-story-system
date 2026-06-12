@@ -188,6 +188,10 @@ export async function generateFrames(params: {
   if (!raw) throw new Error("A IA não retornou conteúdo para o pacote.");
   const parsed = JSON.parse(raw) as GenerationResult;
 
+  // O schema descreve 0-10, mas a descrição não é imposta pelo strict mode.
+  parsed.brand_score = Math.max(0, Math.min(10, Number(parsed.brand_score) || 0));
+  parsed.performance_score = Math.max(0, Math.min(10, Number(parsed.performance_score) || 0));
+
   // Normaliza índices e garante o número de frames pedido (trunca excesso).
   parsed.frames = parsed.frames
     .slice(0, params.brief.frames)

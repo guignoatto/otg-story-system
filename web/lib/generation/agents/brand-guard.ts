@@ -35,6 +35,17 @@ const BRAND_SCHEMA = {
   required: ["tone_rules", "forbidden_words", "required_elements", "visual_constraints", "cta_style"],
 } as const;
 
+/** Contexto mínimo seguro quando o agente não consegue responder. */
+export function fallbackBrandContext(client: ClientProfile): BrandContext {
+  return {
+    tone_rules: [client.tone || "equilibrado"],
+    forbidden_words: [],
+    required_elements: [],
+    visual_constraints: ["não recriar logo"],
+    cta_style: "orgânico",
+  };
+}
+
 export async function runBrandGuard(client: ClientProfile): Promise<BrandContext> {
   const notes = splitLines(client.notes);
 
@@ -76,15 +87,7 @@ export async function runBrandGuard(client: ClientProfile): Promise<BrandContext
   });
 
   const raw = completion.choices[0]?.message?.content;
-  if (!raw) {
-    return {
-      tone_rules: [client.tone || "equilibrado"],
-      forbidden_words: [],
-      required_elements: [],
-      visual_constraints: ["não recriar logo"],
-      cta_style: "orgânico",
-    };
-  }
+  if (!raw) return fallbackBrandContext(client);
 
   return JSON.parse(raw) as BrandContext;
 }

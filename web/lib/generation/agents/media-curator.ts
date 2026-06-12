@@ -101,5 +101,8 @@ export async function runMediaCurator(assets: Asset[]): Promise<MediaInsight[]> 
   if (!raw) return [];
 
   const parsed = JSON.parse(raw) as { insights: MediaInsight[] };
-  return parsed.insights;
+  // Descarta insights de arquivos que a IA inventou — eles contaminariam o
+  // prompt do gerador com fotos que não existem.
+  const validNames = new Set(withUrl.map((a) => a.file_name));
+  return parsed.insights.filter((i) => validNames.has(i.file_name));
 }
