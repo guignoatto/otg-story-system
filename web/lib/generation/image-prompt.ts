@@ -106,11 +106,17 @@ export function buildImagePrompt(input: ImageBriefInput): string {
     angleNote,
     offerNote,
 
-    // --- Uso da foto base (preservar produto) ---
-    "Use the attached photo as the base. PRESERVE the product/packaging exactly as it is — same shape, colors, logo, label, and texture. Do not invent a different dish or product. You may improve the framing, lighting, background and overall art direction so the photo blends into one cohesive editorial layout.",
+    // --- Uso da foto base (fidelidade de comida e produto) ---
+    "Use the attached photo as the base. FOOD FIDELITY: the food must remain exactly as photographed — same texture, doneness, portion size, plating, dishware and sides. PRESERVE any product/packaging exactly as it is — same shape, colors, logo, label, and texture. Do not invent a different dish or product. Do not add or remove ingredients, garnishes, plates, cutlery, hands, or people.",
+
+    // --- Fidelidade de ambiente ---
+    "SCENE FIDELITY: keep the original environment of the photo — same location, surface, background and atmosphere. If you need to extend or clean up the background to fit the vertical format or the text, the extension must look like a natural continuation of the SAME photographed environment. NEVER relocate the dish to an invented setting (studio table, generic restaurant, landscape, marble countertop, or any place not present in the photo).",
+
+    // --- Ajustes permitidos ---
+    "The only allowed adjustments are: lighting and color polish, subtle depth of field, reframing/cropping, and GRAPHIC overlay elements (panels, headline, CTA badge) layered on top of the photo.",
 
     // --- Design e cores ---
-    `Use ONLY these brand colors in the design and graphic elements: ${colorNote}. The creative should feel premium, appetizing, and professionally art-directed.`,
+    `Use ONLY these brand colors for the graphic/overlay elements: ${colorNote}. Never recolor the food or the photographed scene. The creative should feel premium, appetizing, and professionally art-directed.`,
     fontNote,
 
     // --- Texto ---
@@ -121,6 +127,12 @@ export function buildImagePrompt(input: ImageBriefInput): string {
 
     // --- Logo safety ---
     "LOGO SAFETY: never invent, redraw, or add a new logo or wordmark. If a logo already exists in the photo, keep it as photographed. Do not place extra brand marks.",
+
+    // --- Instagram ---
+    output_format === "stories"
+      ? "INSTAGRAM SAFE AREA: keep headline, supporting text and CTA badge inside the central safe zone — avoid the top ~12% and bottom ~18% of the canvas, where Instagram overlays its UI and reply field."
+      : "INSTAGRAM: compose for the feed — text clearly legible at thumbnail size, key elements centered.",
+    "The design must stop the scroll on a phone screen at first glance: one clear focal point, strong hierarchy, minimal text.",
 
     // --- Restrições ---
     "Portuguese spelling and accents must be perfect. Keep text minimal with strong hierarchy.",
