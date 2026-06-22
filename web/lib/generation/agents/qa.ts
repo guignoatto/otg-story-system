@@ -58,6 +58,8 @@ const STORY_CTA_FORBIDDEN = [
 ];
 
 const FORBIDDEN_REPLACEMENTS: [RegExp, string][] = [
+  [/\bfrango\s+assad(o|a|os|as)\b/gi, "frango caseiro"],
+  [/\bassad(o|a|os|as)\b/gi, "caseiro"],
   [/\bbrasa(s)?\b/gi, "comida caseira"],
   [/\bchurrasc(o|aria|ueira)\b/gi, "comida caseira"],
   [/\bsteakhouse\b/gi, "restaurante caseiro"],
@@ -65,6 +67,8 @@ const FORBIDDEN_REPLACEMENTS: [RegExp, string][] = [
   [/\bfogo\b/gi, "calor de comida caseira"],
   [/\bchama(s)?\b/gi, "sabor"],
   [/\blabareda(s)?\b/gi, "calor"],
+  [/\bcroc[âa]ncia\b/gi, "sabor"],
+  [/\bcrocante(s)?\b/gi, "saboroso"],
   [/\bdourado perfeito\b/gi, "almoço bem servido"],
   [/\bacolhimento no prato\b/gi, "comida caseira no prato"],
 ];
@@ -112,6 +116,7 @@ const BAD_VISUAL_DIRECTION_PATTERNS = [
   /\bbrasa(s)?\b/i,
   /\bcarv[aã]o\b/i,
   /\bchurrasc(o|aria|ueira)\b/i,
+  /\bassad(o|a|os|as)\b/i,
   /\bfogo\b/i,
   /\bchama(s)?\b/i,
   /\bfa[ií]sca(s)?\b/i,
@@ -120,6 +125,8 @@ const BAD_VISUAL_DIRECTION_PATTERNS = [
   /\bbrush\b/i,
   /\bgrunge\b/i,
   /\bfast-?food\b/i,
+  /\bcroc[âa]ncia\b/i,
+  /\bcrocante(s)?\b/i,
   /\bbot[aã]o\b/i,
   /\bpill\b/i,
   /\bbadge\b/i,

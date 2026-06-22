@@ -4,6 +4,7 @@ import { getAsset, insertAsset } from "@/lib/data/assets";
 import { updateFrameAiAsset } from "@/lib/data/packages";
 import { downloadFromStorage, uploadToStorage } from "@/lib/storage";
 import { buildImagePrompt, prepareSourceImage } from "@/lib/generation/image";
+import { runImageOutputQA } from "@/lib/generation/agents/image-output-qa";
 import { openai, IMAGE_MODEL } from "@/lib/openai";
 import { toFile } from "openai";
 
@@ -73,6 +74,17 @@ export async function POST(req: NextRequest) {
     const b64 = result.data?.[0]?.b64_json;
     if (!b64) throw new Error("A IA não retornou imagem.");
     const pngBytes = Buffer.from(b64, "base64");
+
+    const imageQa = await runImageOutputQA({ client, pngBytes });
+    if (!imageQa.approved) {
+      return NextResponse.json(
+        {
+          detail: `Imagem reprovada pelo guardião visual: ${imageQa.issues.join("; ") || imageQa.notes}`,
+          image_qa: imageQa,
+        },
+        { status: 422 }
+      );
+    }
 
     const stored = await uploadToStorage({
       clientSlug: client.slug,
