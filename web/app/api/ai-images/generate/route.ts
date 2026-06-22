@@ -27,6 +27,23 @@ type Body = {
   prompt_override?: string;
 };
 
+const MAX_IMAGE_ATTEMPTS = 2;
+
+function isFrangoNaBrazza(client: { slug: string; name: string; instagram: string; notes: string; brand_manual_summary: string; synthetic_manual: string }): boolean {
+  const text = `${client.slug} ${client.name} ${client.instagram} ${client.notes} ${client.brand_manual_summary} ${client.synthetic_manual}`.toLowerCase();
+  return text.includes("frango na brazza") || text.includes("frangonabrazza");
+}
+
+function retryPrompt(basePrompt: string): string {
+  return [
+    basePrompt,
+    "",
+    "RETRY STYLE: create a cleaner editorial real-food story.",
+    "Use the real photographed meal as the dominant subject, approved text only, plain typography, small color accents, generous margins and central safe area.",
+    "Keep any beverage/package small, cropped or in the background. Keep the design closer to a polished restaurant photo than to a poster.",
+  ].join("\n");
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as Body;
@@ -45,42 +62,62 @@ export async function POST(req: NextRequest) {
       fileName: source.file_name,
     });
 
-    // Se o usuário revisou/editou o prompt no modal, usa o texto dele.
-    const prompt =
-      body.prompt_override?.trim() ||
-      buildImagePrompt({
-        client,
-        headline: body.headline || "",
-        body: body.body || "",
-        cta: body.cta || "",
-        visual_direction: body.visual_direction || "",
-        layout_style: body.layout_style || "editorial",
-        output_format: body.output_format || "stories",
-        objective: body.objective,
-        story_type: body.story_type,
-        offer: body.offer,
-      });
-
-    const imageFile = await toFile(prepared, "source.png", { type: "image/png" });
-    const result = await openai().images.edit({
-      model: IMAGE_MODEL,
-      image: imageFile,
-      prompt,
-      size: "1024x1536",
-      quality: (body.quality as "low" | "medium" | "high") || "high",
-      // Preserva fielmente o produto/logo da foto original (igual ChatGPT).
+    const generatedPrompt = buildImagePrompt({
+      client,
+      headline: body.headline || "",
+      body: body.body || "",
+      cta: body.cta || "",
+      visual_direction: body.visual_direction || "",
+      layout_style: body.layout_style || "editorial",
+      output_format: body.output_format || "stories",
+      objective: body.objective,
+      story_type: body.story_type,
+      offer: body.offer,
     });
 
-    const b64 = result.data?.[0]?.b64_json;
-    if (!b64) throw new Error("A IA não retornou imagem.");
-    const pngBytes = Buffer.from(b64, "base64");
+    const frangoClient = isFrangoNaBrazza(client);
+    // Para Frango na Brazza, não confiamos em override manual antigo/contaminado:
+    // a regra de marca precisa vencer qualquer prompt salvo em modal aberto.
+    const basePrompt = body.prompt_override?.trim() && !frangoClient
+      ? body.prompt_override.trim()
+      : generatedPrompt;
 
-    const imageQa = await runImageOutputQA({ client, pngBytes });
-    if (!imageQa.approved) {
+    let pngBytes: Buffer | null = null;
+    let lastImageQa: Awaited<ReturnType<typeof runImageOutputQA>> | null = null;
+    let attemptCount = 0;
+
+    for (let attempt = 1; attempt <= MAX_IMAGE_ATTEMPTS; attempt += 1) {
+      attemptCount = attempt;
+      const imageFile = await toFile(prepared, "source.png", { type: "image/png" });
+      const result = await openai().images.edit({
+        model: IMAGE_MODEL,
+        image: imageFile,
+        prompt: attempt === 1 ? basePrompt : retryPrompt(generatedPrompt),
+        size: "1024x1536",
+        quality: (body.quality as "low" | "medium" | "high") || "high",
+        // Preserva fielmente o produto/logo da foto original (igual ChatGPT).
+      });
+
+      const b64 = result.data?.[0]?.b64_json;
+      if (!b64) throw new Error("A IA não retornou imagem.");
+      pngBytes = Buffer.from(b64, "base64");
+
+      lastImageQa = await runImageOutputQA({ client, pngBytes });
+      if (lastImageQa.approved) break;
+
+      console.warn("Imagem reprovada pelo guardião visual", {
+        client: client.slug,
+        attempt,
+        issues: lastImageQa.issues,
+      });
+    }
+
+    if (!pngBytes || !lastImageQa?.approved) {
       return NextResponse.json(
         {
-          detail: `Imagem reprovada pelo guardião visual: ${imageQa.issues.join("; ") || imageQa.notes}`,
-          image_qa: imageQa,
+          detail: `A IA gerou ${attemptCount} variação(ões), mas o guardião visual reprovou: ${lastImageQa?.issues.join("; ") || lastImageQa?.notes || "sem detalhes"}`,
+          image_qa: lastImageQa,
+          attempts: attemptCount,
         },
         { status: 422 }
       );

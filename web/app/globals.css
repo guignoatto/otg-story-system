@@ -942,6 +942,12 @@ button.compact-action {
   padding: var(--space-1) var(--space-2);
 }
 
+.status-pill.warning {
+  background: #fff3e6;
+  border-color: #f3b36d;
+  color: #9b4f00;
+}
+
 .creative-preview {
   align-items: flex-end;
   aspect-ratio: 9 / 16;
@@ -1067,6 +1073,36 @@ button.compact-action {
 
 .frame-copy strong {
   color: var(--text);
+}
+
+.frame-error {
+  background: #fff8ef;
+  border: 1px solid #f3b36d;
+  border-radius: var(--radius-md);
+  color: #723700;
+  display: grid;
+  gap: 6px;
+  margin: var(--space-2) var(--space-1) 0;
+  padding: var(--space-2);
+}
+
+.frame-error strong {
+  color: #723700;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.frame-error p,
+.frame-error small,
+.frame-error li {
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.frame-error ul {
+  margin: 0;
+  padding-left: var(--space-2);
 }
 
 .frame-actions {

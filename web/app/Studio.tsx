@@ -25,6 +25,13 @@ type Brief = {
   cta: string;
 };
 
+type FrameGenerationError = {
+  detail: string;
+  issues: string[];
+  notes?: string;
+  attempts?: number;
+};
+
 const DEFAULT_BRIEF: Brief = {
   objective: "vendas",
   story_type: "promocao",
@@ -44,6 +51,7 @@ export function Studio({ clients }: Props) {
   const [pkg, setPkg] = useState<StoryPackage | null>(null);
   const [aiByFrame, setAiByFrame] = useState<Record<string, Asset>>({});
   const [generatingFrame, setGeneratingFrame] = useState<Record<string, boolean>>({});
+  const [frameErrors, setFrameErrors] = useState<Record<string, FrameGenerationError>>({});
   const [promptPreview, setPromptPreview] = useState<{ frame: Frame; prompt: string } | null>(null);
   const [loadingPrompt, setLoadingPrompt] = useState(false);
   const [history, setHistory] = useState<StoryPackage[]>([]);
@@ -78,6 +86,7 @@ export function Studio({ clients }: Props) {
         setUsage(usageData);
         setPkg(null);
         setAiByFrame({});
+        setFrameErrors({});
       } catch {
         /* ignore */
       }
@@ -130,6 +139,7 @@ export function Studio({ clients }: Props) {
       if (!res.ok) throw new Error(data.detail || `Erro ${res.status}`);
       setPkg(data as StoryPackage);
       setAiByFrame({});
+      setFrameErrors({});
       setMessage(data.rationale || "Pacote gerado.");
       void refreshHistory();
     } catch (err) {
@@ -221,6 +231,12 @@ export function Studio({ clients }: Props) {
       return;
     }
     setGeneratingFrame((cur) => ({ ...cur, [frame.id]: true }));
+    setFrameErrors((cur) => {
+      const next = { ...cur };
+      delete next[frame.id];
+      return next;
+    });
+    setMessage("Gerando imagem com IA e validando com o guardião visual...");
     try {
       const res = await fetch("/api/ai-images/generate", {
         method: "POST",
@@ -243,8 +259,27 @@ export function Studio({ clients }: Props) {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || `Erro ${res.status}`);
+      if (!res.ok) {
+        const issues = Array.isArray(data.image_qa?.issues) ? data.image_qa.issues : [];
+        const detail = data.detail || `Erro ${res.status}`;
+        setFrameErrors((cur) => ({
+          ...cur,
+          [frame.id]: {
+            detail,
+            issues,
+            notes: data.image_qa?.notes,
+            attempts: data.attempts,
+          },
+        }));
+        setMessage(
+          res.status === 422
+            ? "A imagem foi gerada, mas o guardião visual reprovou. Veja os motivos no frame."
+            : `Erro ao gerar com IA: ${detail}`
+        );
+        return;
+      }
       setAiByFrame((cur) => ({ ...cur, [frame.id]: data.asset as Asset }));
+      setMessage("Imagem com IA gerada e aprovada pelo guardião visual.");
     } catch (err) {
       setMessage(`Erro ao gerar com IA: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -430,10 +465,12 @@ export function Studio({ clients }: Props) {
                 {pkg.frames.map((frame) => {
                   const url = imageUrlFor(frame);
                   const isGenerating = !!generatingFrame[frame.id];
+                  const frameError = frameErrors[frame.id];
                   return (
                     <div key={frame.id} className="frame">
                       <div className="frame-header">
                         <h4>Frame {frame.idx}</h4>
+                        {frameError && <span className="status-pill warning">Reprovada</span>}
                         {aiByFrame[frame.id] && <span className="status-pill">IA</span>}
                       </div>
                       <div
@@ -455,6 +492,20 @@ export function Studio({ clients }: Props) {
                         <p><strong>Chamada:</strong> {frame.cta}</p>
                         <p><strong>Visual:</strong> {frame.visual_direction}</p>
                       </div>
+                      {frameError && (
+                        <div className="frame-error">
+                          <strong>Guardião visual barrou esta imagem</strong>
+                          <p>{frameError.detail}</p>
+                          {!!frameError.issues.length && (
+                            <ul>
+                              {frameError.issues.map((issue) => (
+                                <li key={issue}>{issue}</li>
+                              ))}
+                            </ul>
+                          )}
+                          {frameError.notes && <small>{frameError.notes}</small>}
+                        </div>
+                      )}
                       <div className="frame-actions">
                         {aiByFrame[frame.id] ? (
                           <>
