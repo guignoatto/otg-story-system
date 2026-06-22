@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { supabaseBrowser, STORAGE_BUCKET } from "@/lib/supabase/browser";
 import type { Asset, AssetRole } from "@/lib/types";
 
 type Props = {
@@ -18,26 +19,69 @@ export function ClientAssets({ clientId, initialMedia, initialManuals, mediaSour
   const mediaInput = useRef<HTMLInputElement>(null);
   const manualInput = useRef<HTMLInputElement>(null);
 
+  // Upload direto ao Storage (sem passar pela função): evita o limite de 4,5 MB
+  // de corpo de requisição da Vercel. Por arquivo: assina → envia → registra.
+  async function uploadOne(role: AssetRole, file: File): Promise<Asset> {
+    const signRes = await fetch("/api/assets/sign-upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_id: clientId,
+        role,
+        file_name: file.name,
+        mime_type: file.type,
+      }),
+    });
+    const signData = await signRes.json();
+    if (!signRes.ok) throw new Error(signData.detail || `Erro ${signRes.status}`);
+
+    const { error: upErr } = await supabaseBrowser()
+      .storage.from(STORAGE_BUCKET)
+      .uploadToSignedUrl(signData.storage_path, signData.token, file, {
+        contentType: file.type || "application/octet-stream",
+      });
+    if (upErr) throw new Error(upErr.message);
+
+    const regRes = await fetch("/api/assets/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_id: clientId,
+        role,
+        storage_path: signData.storage_path,
+        file_name: file.name,
+        mime_type: file.type,
+        size_bytes: file.size,
+      }),
+    });
+    const regData = await regRes.json();
+    if (!regRes.ok) throw new Error(regData.detail || `Erro ${regRes.status}`);
+    return regData.asset as Asset;
+  }
+
   async function upload(role: AssetRole, files: FileList | null) {
     if (!files?.length) return;
+    const list = Array.from(files);
     setBusy(true);
-    setStatus(`Enviando ${files.length} arquivo(s)...`);
+    let done = 0;
+    const failures: string[] = [];
     try {
-      const fd = new FormData();
-      fd.append("client_id", clientId);
-      fd.append("role", role);
-      Array.from(files).forEach((f) => fd.append("files", f));
-      const res = await fetch("/api/assets/upload", { method: "POST", body: fd });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || `Erro ${res.status}`);
+      for (const file of list) {
+        setStatus(`Enviando ${done + 1} de ${list.length}: ${file.name}...`);
+        try {
+          const asset = await uploadOne(role, file);
+          if (role === "media") setMedia((cur) => [asset, ...cur]);
+          else setManuals((cur) => [asset, ...cur]);
+          done += 1;
+        } catch (err) {
+          failures.push(`${file.name}: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
-      const data = (await res.json()) as { items: Asset[] };
-      if (role === "media") setMedia((cur) => [...data.items, ...cur]);
-      else setManuals((cur) => [...data.items, ...cur]);
-      setStatus(`${data.items.length} arquivo(s) salvo(s) na nuvem.`);
-    } catch (err) {
-      setStatus(`Erro: ${err instanceof Error ? err.message : String(err)}`);
+      if (failures.length) {
+        setStatus(`${done} enviado(s). Falhou: ${failures.join(" · ")}`);
+      } else {
+        setStatus(`${done} arquivo(s) salvo(s) na nuvem.`);
+      }
     } finally {
       setBusy(false);
       if (mediaInput.current) mediaInput.current.value = "";
