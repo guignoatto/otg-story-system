@@ -37,12 +37,116 @@ const BRAND_SCHEMA = {
 
 /** Contexto mínimo seguro quando o agente não consegue responder. */
 export function fallbackBrandContext(client: ClientProfile): BrandContext {
-  return {
+  return applyDeterministicBrandRules(client, {
     tone_rules: [client.tone || "equilibrado"],
-    forbidden_words: [],
+    forbidden_words: [
+      "salve",
+      "salvar",
+      "guarde",
+      "clique",
+      "botão",
+      "botao",
+      "WhatsApp",
+      "zap",
+    ],
     required_elements: [],
-    visual_constraints: ["não recriar logo"],
-    cta_style: "orgânico",
+    visual_constraints: [
+      "não recriar logo",
+      "não desenhar botão falso, sticker, enquete, quiz ou UI do Instagram",
+    ],
+    cta_style: "orgânico, discreto, sem linguagem de anúncio pago",
+  });
+}
+
+function appendUnique(base: string[], additions: string[]): string[] {
+  const seen = new Set(base.map((item) => item.trim().toLowerCase()).filter(Boolean));
+  const merged = [...base];
+  for (const item of additions) {
+    const clean = item.trim();
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(clean);
+  }
+  return merged;
+}
+
+function isFrangoNaBrazza(client: ClientProfile): boolean {
+  const text = `${client.slug} ${client.name} ${client.instagram} ${client.notes} ${client.brand_manual_summary} ${client.synthetic_manual}`.toLowerCase();
+  return text.includes("frango na brazza") || text.includes("frangonabrazza");
+}
+
+function applyDeterministicBrandRules(
+  client: ClientProfile,
+  context: BrandContext
+): BrandContext {
+  const baseForbidden = [
+    "salve",
+    "salvar",
+    "guarde",
+    "clique",
+    "botão",
+    "botao",
+    "peça pelo WhatsApp",
+    "peca pelo WhatsApp",
+    "chame no WhatsApp",
+    "link na bio",
+  ];
+
+  const safeContext: BrandContext = {
+    ...context,
+    forbidden_words: appendUnique(context.forbidden_words, baseForbidden),
+    visual_constraints: appendUnique(context.visual_constraints, [
+      "CTA de Stories deve ser texto editorial discreto, nunca botão, pill, badge clicável ou sticker falso",
+      "não usar layout de anúncio pago com CTA gigante",
+      "não inventar, redesenhar, melhorar ou completar logotipo",
+      "não tornar refrigerante, lata ou marca de terceiros o foco da arte",
+    ]),
+  };
+
+  if (!isFrangoNaBrazza(client)) return safeContext;
+
+  return {
+    tone_rules: appendUnique(safeContext.tone_rules, [
+      "caseiro, popular, direto e caloroso",
+      "foco em almoço, marmitex, prato feito, delivery e rotina",
+      "evitar tom premium, churrascaria ou brasa literal",
+    ]),
+    forbidden_words: appendUnique(safeContext.forbidden_words, [
+      "brasa",
+      "brasas",
+      "churrasco",
+      "churrascaria",
+      "churrasqueira",
+      "steakhouse",
+      "grelhado",
+      "grelhada",
+      "fogo",
+      "chama",
+      "chamas",
+      "labareda",
+      "labaredas",
+      "dourado perfeito",
+      "acolhimento no prato",
+      "logo antigo",
+      "círculo vermelho",
+      "circulo vermelho",
+    ]),
+    required_elements: appendUnique(safeContext.required_elements, [
+      "identidade correta do perfil @frangonabrazza",
+      "comida caseira, almoço, marmitex ou prato feito como território principal",
+      "paleta preta, amarela e vermelha quando houver elementos gráficos",
+    ]),
+    visual_constraints: appendUnique(safeContext.visual_constraints, [
+      "não usar chamas, faíscas, labaredas, brasas, carvão ou estética de churrasco",
+      "não usar brush strokes agressivos, textura grunge pesada ou cartaz de fast-food",
+      "não transformar o prato em churrascaria premium ou grelhado gourmet",
+      "não usar o refrigerante/lata como foco visual; se aparecer na foto, manter secundário e sem redesenhar rótulo",
+      "valorizar comida caseira real, prato bem servido, marmitex e rotina de almoço",
+    ]),
+    cta_style:
+      "Stories orgânicos: CTA curto e discreto como texto, ex. 'Manda para quem ama comida caseira'. Nunca botão, pill, sticker ou chamada de anúncio.",
   };
 }
 
@@ -89,5 +193,5 @@ export async function runBrandGuard(client: ClientProfile): Promise<BrandContext
   const raw = completion.choices[0]?.message?.content;
   if (!raw) return fallbackBrandContext(client);
 
-  return JSON.parse(raw) as BrandContext;
+  return applyDeterministicBrandRules(client, JSON.parse(raw) as BrandContext);
 }

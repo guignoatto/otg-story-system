@@ -3,7 +3,7 @@ import { openai, TEXT_MODEL } from "../../openai";
 import type { BrandContext, GenerationBrief } from "../../types";
 import type { GeneratedFrame } from "../frames";
 
-const LAYOUT_STYLES = ["editorial", "split", "full_bleed", "quote", "save_card"] as const;
+const LAYOUT_STYLES = ["editorial", "split", "full_bleed", "quote"] as const;
 
 const QA_SCHEMA = {
   type: "object",
@@ -44,6 +44,78 @@ export type QAResult = {
   frames: GeneratedFrame[];
 };
 
+const STORY_CTA_FORBIDDEN = [
+  /\bsalv(e|ar|a)\b/i,
+  /\bguard(e|ar|a)\b/i,
+  /\bclique\b/i,
+  /\blink na bio\b/i,
+  /\bwhats(app)?\b/i,
+  /\bzap\b/i,
+  /\bbot[aã]o\b/i,
+  /\benquete\b/i,
+  /\bquiz\b/i,
+  /\bsticker\b/i,
+];
+
+const FORBIDDEN_REPLACEMENTS: [RegExp, string][] = [
+  [/\bbrasa(s)?\b/gi, "comida caseira"],
+  [/\bchurrasc(o|aria|ueira)\b/gi, "comida caseira"],
+  [/\bsteakhouse\b/gi, "restaurante caseiro"],
+  [/\bgrelhad(o|a|os|as)\b/gi, "bem servido"],
+  [/\bfogo\b/gi, "calor de comida caseira"],
+  [/\bchama(s)?\b/gi, "sabor"],
+  [/\blabareda(s)?\b/gi, "calor"],
+  [/\bdourado perfeito\b/gi, "almoço bem servido"],
+  [/\bacolhimento no prato\b/gi, "comida caseira no prato"],
+];
+
+function sanitizeForbiddenTerms(value: string, brandContext: BrandContext): string {
+  const forbiddenText = brandContext.forbidden_words.join(" ").toLowerCase();
+  if (!forbiddenText) return value;
+  return FORBIDDEN_REPLACEMENTS.reduce((text, [pattern, replacement]) => {
+    const source = pattern.source.toLowerCase();
+    const shouldApply =
+      forbiddenText.includes("brasa") ||
+      forbiddenText.includes("churrasco") ||
+      forbiddenText.includes("fogo") ||
+      forbiddenText.includes("grelhado") ||
+      source.includes("dourado") ||
+      source.includes("acolhimento");
+    return shouldApply ? text.replace(pattern, replacement) : text;
+  }, value);
+}
+
+function sanitizeStoryCta(cta: string, brandContext: BrandContext): string {
+  const clean = sanitizeForbiddenTerms(cta.trim(), brandContext);
+  if (!clean || STORY_CTA_FORBIDDEN.some((pattern) => pattern.test(clean))) {
+    if (brandContext.required_elements.join(" ").toLowerCase().includes("frangonabrazza")) {
+      return "Manda para quem ama comida caseira";
+    }
+    return "Manda para quem iria contigo";
+  }
+  return clean;
+}
+
+function sanitizeFrame(
+  frame: GeneratedFrame,
+  brandContext: BrandContext,
+  outputFormat: GenerationBrief["output_format"]
+): GeneratedFrame {
+  const isStory = outputFormat === "stories";
+  return {
+    ...frame,
+    headline: sanitizeForbiddenTerms(frame.headline, brandContext),
+    body: sanitizeForbiddenTerms(frame.body, brandContext),
+    cta: isStory ? sanitizeStoryCta(frame.cta, brandContext) : sanitizeForbiddenTerms(frame.cta, brandContext),
+    visual_direction: sanitizeForbiddenTerms(frame.visual_direction, brandContext)
+      .replace(/\b(bot[aã]o|pill|badge|sticker|enquete|quiz|brush grunge|grunge pesado)\b/gi, "texto editorial discreto")
+      .replace(/\b(chamas|fa[ií]scas|labaredas)\b/gi, "luz quente"),
+    layout_style: LAYOUT_STYLES.includes(frame.layout_style as (typeof LAYOUT_STYLES)[number])
+      ? frame.layout_style
+      : "editorial",
+  };
+}
+
 export async function runQA(params: {
   frames: GeneratedFrame[];
   brandContext: BrandContext;
@@ -80,6 +152,7 @@ export async function runQA(params: {
     framesJson,
     "",
     "Para cada frame: verifique e corrija se necessário. Retorne o frame com headline/body/cta/visual_direction corrigidos.",
+    "Se a regra de marca proíbe uma palavra/conceito, corrija também quando aparecer em visual_direction.",
   ].join("\n");
 
   const completion = await openai().chat.completions.create({
@@ -95,6 +168,8 @@ export async function runQA(params: {
           "REGRAS DE QA — Stories:",
           "- CTAs permitidas: responder no direct, reagir com emoji, enviar no direct, compartilhar no direct.",
           "- CTAs proibidas: salve, salvar, guarde, comente, clique, link na bio, enquete, quiz, sticker interativo, caixa de pergunta, botão falso, peça pelo WhatsApp.",
+          "- CTA nunca deve ser orientada como botão/pill/badge visual. Deve ser texto discreto.",
+          "- Não use layout de save card em Stories.",
           "",
           "REGRAS DE QA — Carrossel/Feed:",
           "- Salvar e comentar são permitidos quando naturais.",
@@ -103,6 +178,8 @@ export async function runQA(params: {
           "REGRAS GERAIS:",
           "- Nunca invente itens de cardápio ou fatos fora do briefing.",
           "- Não recriar ou descrever logo para ser gerado por IA.",
+          "- Bloqueie linguagem visual que contradiz a operação: ex. comida caseira não deve virar churrasco premium/brasa/fogo/grunge.",
+          "- Se houver refrigerante/lata/marca de terceiro na foto, ela não pode virar foco do frame.",
           "- Corrija violações diretamente no campo, não apenas liste o problema.",
           "- Responda apenas em português do Brasil.",
         ].join("\n"),
@@ -132,5 +209,8 @@ export async function runQA(params: {
     frames: GeneratedFrame[];
   };
 
-  return parsed;
+  return {
+    ...parsed,
+    frames: parsed.frames.map((frame) => sanitizeFrame(frame, brandContext, brief.output_format)),
+  };
 }

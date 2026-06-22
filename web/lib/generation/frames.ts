@@ -13,7 +13,7 @@ const PILLARS: Record<string, string[]> = {
   relacionamento: ["Proximidade", "Equipe", "Ritual", "Conversa"],
 };
 
-const LAYOUT_STYLES = ["editorial", "split", "full_bleed", "quote", "save_card"];
+const LAYOUT_STYLES = ["editorial", "split", "full_bleed", "quote"];
 
 export type GeneratedFrame = {
   index: number;
@@ -71,11 +71,25 @@ const FRAME_SCHEMA = {
   required: ["rationale", "brand_score", "performance_score", "frames"],
 } as const;
 
-function buildSystemPrompt(brandContext?: BrandContext): string {
+function buildSystemPrompt(params: {
+  brandContext?: BrandContext;
+  outputFormat: GenerationBrief["output_format"];
+}): string {
+  const { brandContext, outputFormat } = params;
   const forbiddenNote =
     brandContext?.forbidden_words.length
-      ? `- Palavras/expressões ABSOLUTAMENTE PROIBIDAS para este cliente: ${brandContext.forbidden_words.join(", ")}.`
+      ? `- Palavras/expressões ABSOLUTAMENTE PROIBIDAS para este cliente: ${brandContext.forbidden_words.join(", ")}. Essa restrição vale para headline, body, CTA e visual_direction.`
       : "";
+  const storySpecific =
+    outputFormat === "stories"
+      ? [
+          "- Para Stories, CTA é texto editorial curto, não componente visual. Nunca peça botão, pill, badge clicável, sticker, enquete ou UI falsa.",
+          "- Para Stories, não use layout de 'save card' nem incentive salvar/guardar.",
+          "- Para Stories, evite CTA grande no rodapé porque conflita com a área de resposta do Instagram.",
+        ]
+      : [
+          "- Para carrossel/feed, salvar/compartilhar pode aparecer se fizer sentido, mas sem visual de anúncio pago.",
+        ];
 
   return [
     "Você é o diretor criativo da OTG Mídia, especialista em conteúdo orgânico de Instagram (Stories e carrossel) para restaurantes brasileiros.",
@@ -84,14 +98,17 @@ function buildSystemPrompt(brandContext?: BrandContext): string {
     "REGRAS DE QA (obrigatórias):",
     "- Conteúdo é ORGÂNICO, não anúncio pago. Nunca use linguagem de anúncio, preços, número de telefone, endereço ou promessas agressivas sem que estejam no briefing.",
     "- Em Stories, ações válidas são orgânicas: responder no direct, reagir com emoji, enviar/compartilhar no direct, continuar assistindo. NÃO use 'salve', 'salvar', 'guarde', 'comente', 'clique', 'link na bio', enquete, quiz, sticker interativo, caixa de pergunta, botão falso ou 'peça pelo WhatsApp'.",
+    ...storySpecific,
     "- Em carrossel/feed, salvar/compartilhar/comentar são aceitáveis quando fizerem sentido.",
     "- Respeite estritamente as REGRAS OPERACIONAIS do cliente (ex.: delivery-only, só à noite, não mencionar almoço/salão/reserva/mesa). Se a regra proíbe algo, jamais mencione.",
     forbiddenNote,
     "- Não invente itens de cardápio, preços ou fatos fora do briefing.",
     "- A logo NUNCA é descrita como elemento a recriar; a direção visual deve preservar marcas fotografadas como estão.",
+    "- Se uma mídia tiver refrigerante/lata/marca de terceiros, não transforme isso em foco do frame e não escreva como se fosse parceria.",
+    "- visual_direction deve orientar composição editorial; não deve pedir chamas, faíscas, brush grunge ou cartaz agressivo quando isso não estiver explicitamente no manual.",
     `- layout_style deve ser um de: ${LAYOUT_STYLES.join(", ")}.`,
     "- Se houver mídias reais fornecidas, distribua-as entre os frames usando media_filename (use exatamente o nome listado). Se não houver, use null.",
-    "- headline curta (até ~6 palavras). body com 1 frase. cta é uma chamada orgânica curta.",
+    "- headline curta (até ~6 palavras). body com 1 frase. cta é uma chamada orgânica curta, sem instrução visual de botão.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -124,6 +141,7 @@ function buildUserPrompt(params: {
   const brandLines: string[] = [];
   if (brandContext) {
     if (brandContext.tone_rules.length) brandLines.push(`Tom de voz (detalhado): ${brandContext.tone_rules.join("; ")}`);
+    if (brandContext.forbidden_words.length) brandLines.push(`Palavras e conceitos proibidos: ${brandContext.forbidden_words.join("; ")}`);
     if (brandContext.required_elements.length) brandLines.push(`Elementos obrigatórios: ${brandContext.required_elements.join("; ")}`);
     if (brandContext.visual_constraints.length) brandLines.push(`Restrições visuais: ${brandContext.visual_constraints.join("; ")}`);
     if (brandContext.cta_style) brandLines.push(`Estilo de CTA: ${brandContext.cta_style}`);
@@ -153,6 +171,9 @@ function buildUserPrompt(params: {
     "",
     "MÍDIAS REAIS DISPONÍVEIS (use os nomes em media_filename):",
     mediaLines.length ? mediaLines.join("\n") : "- (nenhuma)",
+    mediaLines.length
+      ? "Se uma mídia tiver lata/refrigerante/logo de terceiro ou elemento que distraia, escolha outra quando possível. Se precisar usar, mantenha isso secundário e não cite como destaque."
+      : "",
     "",
     `Gere exatamente ${brief.frames} frames, numerados de 1 a ${brief.frames}.`,
     mediaInsights?.length
@@ -175,7 +196,13 @@ export async function generateFrames(params: {
     model: TEXT_MODEL,
     temperature: 0.8,
     messages: [
-      { role: "system", content: buildSystemPrompt(params.brandContext) },
+      {
+        role: "system",
+        content: buildSystemPrompt({
+          brandContext: params.brandContext,
+          outputFormat: params.brief.output_format,
+        }),
+      },
       { role: "user", content: buildUserPrompt(params) },
     ],
     response_format: {

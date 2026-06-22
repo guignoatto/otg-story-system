@@ -85,6 +85,8 @@ export async function runMediaCurator(assets: Asset[]): Promise<MediaInsight[]> 
         content: [
           "Você é um diretor de arte especializado em fotografia gastronômica brasileira.",
           "Analise imagens de alimentos/restaurantes com olhar técnico e comercial.",
+          "Se a foto tiver lata de refrigerante, marca de terceiro, rótulo ou embalagem não pertencente ao restaurante, mencione isso claramente em visual_description.",
+          "Quando uma marca de terceiro ou lata dominar a cena, reduza quality_score e inclua em avoid_for, pois ela não deve virar foco do criativo.",
           "Seja conciso e objetivo. Responda apenas em português do Brasil.",
           "best_for e avoid_for usam exatamente estes valores: vendas, reservas, engajamento, awareness, alcance_local, relacionamento.",
         ].join("\n"),
