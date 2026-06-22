@@ -3,6 +3,14 @@
 __pycache__/
 outputs/
 
+# Artefatos locais gerados durante trabalho/QA
+tmp/
+uploads/
+
+# Pastas legadas locais da versao anterior. O projeto atual roda em web/.
+backend/
+frontend/
+
 # App Next.js (web/) — dependências e build
 web/node_modules/
 web/.next/

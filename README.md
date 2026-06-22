@@ -24,6 +24,27 @@ Pensado para deploy no **Vercel** (um único projeto).
 - `packages` — pacotes gerados por cliente (objetivo, formato, custo, scores, rationale).
 - `frames` — telas de cada pacote (headline, body, cta, layout, mídia e imagem IA).
 
+## Manuais de marca v1
+
+Os manuais de marca operacionais para IA ficam em:
+
+`docs/brand-manuals/`
+
+Eles incluem regras de identidade, paleta, tipografia, direção fotográfica, voz,
+CTAs permitidos para Stories orgânicos e checklist do guardião da marca.
+
+PDFs prontos para consulta/apresentação ficam em:
+
+`output/pdf/brand-manuals/`
+
+Também existe um pacote único com todos os PDFs:
+
+`output/pdf/otg-brand-manuals-v1.zip`
+
+Observação: quando o cliente não tiver manual oficial, esses arquivos devem ser
+tratados como uma versão v1 de trabalho. Logos baixados de Instagram/site são
+referências visuais e não devem ser recriados por IA.
+
 ## Rodar localmente
 
 Pré-requisito: Node.js 20+.
