@@ -16,3 +16,7 @@ web/node_modules/
 web/.next/
 web/.env*
 web/next-env.d.ts
+
+# Vercel local project metadata
+web/.vercel/
+.vercel/
