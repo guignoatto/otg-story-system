@@ -72,6 +72,11 @@ function appendUnique(base: string[], additions: string[]): string[] {
   return merged;
 }
 
+function removeForbiddenTerms(base: string[], removals: string[]): string[] {
+  const blocked = new Set(removals.map((item) => item.trim().toLowerCase()));
+  return base.filter((item) => !blocked.has(item.trim().toLowerCase()));
+}
+
 function isFrangoNaBrazza(client: ClientProfile): boolean {
   const text = `${client.slug} ${client.name} ${client.instagram} ${client.notes} ${client.brand_manual_summary} ${client.synthetic_manual}`.toLowerCase();
   return text.includes("frango na brazza") || text.includes("frangonabrazza");
@@ -107,13 +112,8 @@ function applyDeterministicBrandRules(
 
   if (!isFrangoNaBrazza(client)) return safeContext;
 
-  return {
-    tone_rules: appendUnique(safeContext.tone_rules, [
-      "caseiro, popular, direto e caloroso",
-      "foco em almoço, marmitex, prato feito, delivery e rotina",
-      "evitar tom premium, churrascaria ou brasa literal",
-    ]),
-    forbidden_words: appendUnique(safeContext.forbidden_words, [
+  const frangoForbiddenWords = removeForbiddenTerms(
+    appendUnique(safeContext.forbidden_words, [
       "brasa",
       "brasas",
       "churrasco",
@@ -133,6 +133,26 @@ function applyDeterministicBrandRules(
       "círculo vermelho",
       "circulo vermelho",
     ]),
+    [
+      // These can be mentioned in internal art direction, e.g. "keep the soda can secondary".
+      // The visual constraint below blocks turning third-party brands into the creative focus.
+      "destaque",
+      "refrigerante",
+      "refrigerantes",
+      "lata",
+      "latas",
+      "bebida",
+      "bebidas",
+    ]
+  );
+
+  return {
+    tone_rules: appendUnique(safeContext.tone_rules, [
+      "caseiro, popular, direto e caloroso",
+      "foco em almoço, marmitex, prato feito, delivery e rotina",
+      "evitar tom premium, churrascaria ou brasa literal",
+    ]),
+    forbidden_words: frangoForbiddenWords,
     required_elements: appendUnique(safeContext.required_elements, [
       "identidade correta do perfil @frangonabrazza",
       "comida caseira, almoço, marmitex ou prato feito como território principal",

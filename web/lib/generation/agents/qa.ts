@@ -96,6 +96,73 @@ function sanitizeStoryCta(cta: string, brandContext: BrandContext): string {
   return clean;
 }
 
+function isFrangoContext(brandContext: BrandContext): boolean {
+  const text = [
+    brandContext.tone_rules.join(" "),
+    brandContext.required_elements.join(" "),
+    brandContext.visual_constraints.join(" "),
+    brandContext.cta_style,
+  ]
+    .join(" ")
+    .toLowerCase();
+  return text.includes("frangonabrazza") || (text.includes("marmitex") && text.includes("comida caseira"));
+}
+
+const BAD_VISUAL_DIRECTION_PATTERNS = [
+  /\bbrasa(s)?\b/i,
+  /\bcarv[aã]o\b/i,
+  /\bchurrasc(o|aria|ueira)\b/i,
+  /\bfogo\b/i,
+  /\bchama(s)?\b/i,
+  /\bfa[ií]sca(s)?\b/i,
+  /\blabareda(s)?\b/i,
+  /\bgrelhad(o|a|os|as)\b/i,
+  /\bbrush\b/i,
+  /\bgrunge\b/i,
+  /\bfast-?food\b/i,
+  /\bbot[aã]o\b/i,
+  /\bpill\b/i,
+  /\bbadge\b/i,
+  /\bsticker\b/i,
+  /\benquete\b/i,
+  /\bquiz\b/i,
+  /\bcta gigante\b/i,
+  /\brodap[eé]\b/i,
+];
+
+function safeFrangoVisualDirection(original: string): string {
+  const lower = original.toLowerCase();
+  const hero = lower.includes("marmitex")
+    ? "marmitex de frango"
+    : lower.includes("prato")
+      ? "prato feito caseiro"
+      : "comida caseira bem servida";
+  const thirdPartyNote = /\b(refrigerante|lata|coca|fanta)\b/i.test(original)
+    ? " Se houver lata ou marca de terceiro na foto, manter pequena, cortada ou ao fundo."
+    : "";
+
+  return [
+    `Composição editorial limpa com ${hero} como protagonista.`,
+    "Usar preto, amarelo e vermelho apenas em detalhes gráficos discretos.",
+    thirdPartyNote,
+    "Sem efeitos agressivos, sem estética de anúncio e sem CTA visual.",
+  ]
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sanitizeVisualDirection(value: string, brandContext: BrandContext): string {
+  const original = value.trim();
+  if (isFrangoContext(brandContext) && BAD_VISUAL_DIRECTION_PATTERNS.some((pattern) => pattern.test(original))) {
+    return safeFrangoVisualDirection(original);
+  }
+
+  return sanitizeForbiddenTerms(original, brandContext)
+    .replace(/\b(bot[aã]o|pill|badge|sticker|enquete|quiz|brush grunge|grunge pesado)\b/gi, "texto editorial discreto")
+    .replace(/\b(chamas|fa[ií]scas|labaredas)\b/gi, "luz quente");
+}
+
 function sanitizeFrame(
   frame: GeneratedFrame,
   brandContext: BrandContext,
@@ -107,9 +174,7 @@ function sanitizeFrame(
     headline: sanitizeForbiddenTerms(frame.headline, brandContext),
     body: sanitizeForbiddenTerms(frame.body, brandContext),
     cta: isStory ? sanitizeStoryCta(frame.cta, brandContext) : sanitizeForbiddenTerms(frame.cta, brandContext),
-    visual_direction: sanitizeForbiddenTerms(frame.visual_direction, brandContext)
-      .replace(/\b(bot[aã]o|pill|badge|sticker|enquete|quiz|brush grunge|grunge pesado)\b/gi, "texto editorial discreto")
-      .replace(/\b(chamas|fa[ií]scas|labaredas)\b/gi, "luz quente"),
+    visual_direction: sanitizeVisualDirection(frame.visual_direction, brandContext),
     layout_style: LAYOUT_STYLES.includes(frame.layout_style as (typeof LAYOUT_STYLES)[number])
       ? frame.layout_style
       : "editorial",
