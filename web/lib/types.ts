@@ -11,7 +11,7 @@ export type CampaignObjective =
 export type OutputFormat = "stories" | "carrossel";
 export type StoryType = "promocao" | "bastidor" | "prova_social" | "cardapio" | "urgencia";
 
-export type AssetRole = "manual" | "media" | "ai";
+export type AssetRole = "manual" | "media" | "ai" | "logo";
 
 export type Asset = {
   id: string;

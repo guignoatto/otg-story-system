@@ -3,6 +3,9 @@ import { getClient } from "@/lib/data/clients";
 import { listAssets } from "@/lib/data/assets";
 import { insertPackageWithFrames, type NewFrame } from "@/lib/data/packages";
 import { generatePackage } from "@/lib/generation/pipeline";
+import { driveCatalog } from "@/lib/drive";
+import { importDriveFiles } from "@/lib/drive-import";
+import { isGeneratableMediaAsset } from "@/lib/asset-classification";
 import type { GenerationBrief } from "@/lib/types";
 
 export const maxDuration = 120;
@@ -22,20 +25,51 @@ export async function POST(req: NextRequest) {
     if (!client) return NextResponse.json({ detail: "Cliente não encontrado." }, { status: 404 });
 
     const frameCount = Math.max(3, Math.min(brief.frames || 4, 10));
-    const allMedia = (await listAssets(client.id, "media")).filter((a) =>
-      a.mime_type.startsWith("image/")
-    );
+    let allMedia = (await listAssets(client.id, "media")).filter(isGeneratableMediaAsset);
+    const autoImportNotes: string[] = [];
+    if (!allMedia.length && client.media_source_url) {
+      try {
+        const catalog = await driveCatalog(client.media_source_url, MAX_SELECTED_MEDIA);
+        const imageFileIds = catalog
+          .filter((item) => item.mime_type.startsWith("image/"))
+          .slice(0, MAX_SELECTED_MEDIA)
+          .map((item) => item.drive_file_id);
+        if (imageFileIds.length) {
+          const imported = await importDriveFiles(client, imageFileIds);
+          allMedia = imported.filter(isGeneratableMediaAsset);
+          autoImportNotes.push(`Importei automaticamente ${allMedia.length} mídia(s) do Drive antes de gerar.`);
+        }
+      } catch (err) {
+        autoImportNotes.push(
+          `Tentei importar do Drive automaticamente, mas falhou: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
     const selectedIds = Array.isArray(brief.media_asset_ids)
       ? brief.media_asset_ids.slice(0, MAX_SELECTED_MEDIA)
       : [];
     const selectedIdSet = new Set(selectedIds);
-    const media = selectedIds.length
+    let media = selectedIds.length
       ? allMedia.filter((asset) => selectedIdSet.has(asset.id))
       : allMedia.slice(0, MAX_SELECTED_MEDIA);
+    if (selectedIds.length && !media.length && allMedia.length) {
+      media = allMedia.slice(0, MAX_SELECTED_MEDIA);
+    }
 
     if (!media.length) {
       return NextResponse.json(
-        { detail: "Selecione pelo menos uma imagem válida do cliente para gerar o pacote." },
+        {
+          detail: "Este cliente ainda não tem imagem real válida para gerar o pacote.",
+          remediation_steps: [
+            client.media_source_url
+              ? "Verificar se a pasta do Google Drive está acessível para a conta de serviço e contém imagens."
+              : "Cadastrar ou importar fotos reais do cliente na biblioteca.",
+            "Usar fotos de prato, ambiente, produto ou delivery em formato de imagem.",
+            "Depois do upload, gerar o pacote novamente; o sistema seleciona automaticamente mídias válidas.",
+          ],
+          next_action: "Abrir o cadastro do cliente e enviar mídias reais antes de gerar.",
+          auto_import_notes: autoImportNotes,
+        },
         { status: 400 }
       );
     }
@@ -78,9 +112,11 @@ export async function POST(req: NextRequest) {
       frames_count: frames.length,
       offer: brief.offer || "",
       cta: brief.cta || "",
-      rationale: result.qa_notes
-        ? `${result.rationale}\n\nQA: ${result.qa_notes}`
-        : result.rationale,
+      rationale: [
+        autoImportNotes.join("\n"),
+        result.rationale,
+        result.qa_notes ? `QA: ${result.qa_notes}` : "",
+      ].filter(Boolean).join("\n\n"),
       brand_score: result.brand_score,
       performance_score: result.performance_score,
       cost_brl: estimateCostBrl(frameCount),
@@ -91,7 +127,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(pkg, { status: 201 });
   } catch (err) {
     return NextResponse.json(
-      { detail: err instanceof Error ? err.message : String(err) },
+      {
+        detail: err instanceof Error ? err.message : String(err),
+        remediation_steps: [
+          "Tentar novamente com menos frames ou menos mídias selecionadas.",
+          "Se persistir, revisar o manual/mídias do cliente e regenerar o pacote.",
+        ],
+      },
       { status: 500 }
     );
   }

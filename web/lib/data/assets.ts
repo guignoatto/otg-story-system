@@ -9,10 +9,13 @@ export async function listAssets(clientId: string, role?: AssetRole): Promise<As
     .select("*")
     .eq("client_id", clientId)
     .order("created_at", { ascending: false });
-  if (role) query = query.eq("role", role);
+  if (role && role !== "logo") query = query.eq("role", role);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return (data ?? []).map(mapAsset);
+  const mapped = (data ?? []).map(mapAsset);
+  if (role === "logo") return mapped.filter((asset) => asset.role === "logo");
+  if (role === "media") return mapped.filter((asset) => asset.role !== "logo");
+  return mapped;
 }
 
 export async function getAsset(id: string): Promise<Asset | null> {
@@ -53,18 +56,22 @@ export async function deleteAsset(id: string): Promise<string | null> {
 }
 
 export async function insertAsset(asset: NewAsset): Promise<Asset> {
+  const dbRole = asset.role === "logo" ? "media" : asset.role;
+  const notes = asset.role === "logo"
+    ? `[asset_type:logo]\n${asset.notes ?? ""}`.trim()
+    : asset.notes ?? "";
   const { data, error } = await supabaseAdmin()
     .from("assets")
     .insert({
       client_id: asset.client_id,
-      role: asset.role,
+      role: dbRole,
       file_name: asset.file_name,
       mime_type: asset.mime_type,
       storage_path: asset.storage_path,
       public_url: asset.public_url,
       size_bytes: asset.size_bytes ?? 0,
       source: asset.source ?? "upload",
-      notes: asset.notes ?? "",
+      notes,
       detected_colors: asset.detected_colors ?? [],
       detected_typography: asset.detected_typography ?? [],
       detected_tone: asset.detected_tone ?? null,

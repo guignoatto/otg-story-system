@@ -15,9 +15,10 @@ export default async function EditClientePage({ params }: Props) {
   const client = await getClient(id);
   if (!client) notFound();
 
-  const [media, manuals] = await Promise.all([
+  const [media, manuals, logos] = await Promise.all([
     listAssets(client.id, "media"),
     listAssets(client.id, "manual"),
+    listAssets(client.id, "logo"),
   ]);
 
   return (
@@ -46,6 +47,7 @@ export default async function EditClientePage({ params }: Props) {
               clientId={client.id}
               initialMedia={media}
               initialManuals={manuals}
+              initialLogos={logos}
               mediaSourceUrl={client.media_source_url}
             />
           </div>

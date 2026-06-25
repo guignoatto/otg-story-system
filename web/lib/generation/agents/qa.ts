@@ -2,6 +2,12 @@ import "server-only";
 import { openai, TEXT_MODEL } from "../../openai";
 import type { BrandContext, GenerationBrief } from "../../types";
 import type { GeneratedFrame } from "../frames";
+import {
+  buildFrangoSafeVisualDirection,
+  frangoPromptSafetyBlock,
+  isFrangoBrandContext,
+  sanitizeFrangoText,
+} from "../frango-safety";
 
 const LAYOUT_STYLES = ["editorial", "split", "full_bleed", "quote"] as const;
 
@@ -57,6 +63,18 @@ const STORY_CTA_FORBIDDEN = [
   /\bsticker\b/i,
 ];
 
+const STORY_CTA_ACTIONS = [
+  /\bmanda\b/i,
+  /\benvia\b/i,
+  /\bcompartilh(a|e)\b/i,
+  /\bresponde\b/i,
+  /\breage\b/i,
+  /\bchama\b/i,
+  /\bdirect\b/i,
+  /\bquem\s+vem\b/i,
+  /\bquem\s+iria\b/i,
+];
+
 const FORBIDDEN_REPLACEMENTS: [RegExp, string][] = [
   [/\bfrango\s+assad(o|a|os|as)\b/gi, "frango caseiro"],
   [/\bassad(o|a|os|as)\b/gi, "caseiro"],
@@ -70,10 +88,13 @@ const FORBIDDEN_REPLACEMENTS: [RegExp, string][] = [
   [/\bcroc[âa]ncia\b/gi, "sabor"],
   [/\bcrocante(s)?\b/gi, "saboroso"],
   [/\bdourado perfeito\b/gi, "almoço bem servido"],
+  [/\bderrete\s+na\s+boca\b/gi, "bem servido"],
   [/\bacolhimento no prato\b/gi, "comida caseira no prato"],
 ];
 
 function sanitizeForbiddenTerms(value: string, brandContext: BrandContext): string {
+  if (isFrangoBrandContext(brandContext)) return sanitizeFrangoText(value);
+
   const forbiddenText = brandContext.forbidden_words.join(" ").toLowerCase();
   if (!forbiddenText) return value;
   return FORBIDDEN_REPLACEMENTS.reduce((text, [pattern, replacement]) => {
@@ -91,8 +112,12 @@ function sanitizeForbiddenTerms(value: string, brandContext: BrandContext): stri
 
 function sanitizeStoryCta(cta: string, brandContext: BrandContext): string {
   const clean = sanitizeForbiddenTerms(cta.trim(), brandContext);
-  if (!clean || STORY_CTA_FORBIDDEN.some((pattern) => pattern.test(clean))) {
-    if (brandContext.required_elements.join(" ").toLowerCase().includes("frangonabrazza")) {
+  if (
+    !clean ||
+    STORY_CTA_FORBIDDEN.some((pattern) => pattern.test(clean)) ||
+    !STORY_CTA_ACTIONS.some((pattern) => pattern.test(clean))
+  ) {
+    if (isFrangoBrandContext(brandContext)) {
       return "Manda para quem ama comida caseira";
     }
     return "Manda para quem iria contigo";
@@ -100,72 +125,19 @@ function sanitizeStoryCta(cta: string, brandContext: BrandContext): string {
   return clean;
 }
 
-function isFrangoContext(brandContext: BrandContext): boolean {
-  const text = [
-    brandContext.tone_rules.join(" "),
-    brandContext.required_elements.join(" "),
-    brandContext.visual_constraints.join(" "),
-    brandContext.cta_style,
-  ]
-    .join(" ")
-    .toLowerCase();
-  return text.includes("frangonabrazza") || (text.includes("marmitex") && text.includes("comida caseira"));
-}
-
-const BAD_VISUAL_DIRECTION_PATTERNS = [
-  /\bbrasa(s)?\b/i,
-  /\bcarv[aã]o\b/i,
-  /\bchurrasc(o|aria|ueira)\b/i,
-  /\bassad(o|a|os|as)\b/i,
-  /\bfogo\b/i,
-  /\bchama(s)?\b/i,
-  /\bfa[ií]sca(s)?\b/i,
-  /\blabareda(s)?\b/i,
-  /\bgrelhad(o|a|os|as)\b/i,
-  /\bbrush\b/i,
-  /\bgrunge\b/i,
-  /\bfast-?food\b/i,
-  /\bcroc[âa]ncia\b/i,
-  /\bcrocante(s)?\b/i,
-  /\bbot[aã]o\b/i,
-  /\bpill\b/i,
-  /\bbadge\b/i,
-  /\bsticker\b/i,
-  /\benquete\b/i,
-  /\bquiz\b/i,
-  /\bcta gigante\b/i,
-  /\brodap[eé]\b/i,
-];
-
-function safeFrangoVisualDirection(original: string): string {
-  const lower = original.toLowerCase();
-  const hero = lower.includes("marmitex")
-    ? "marmitex de frango"
-    : lower.includes("prato")
-      ? "prato feito caseiro"
-      : "comida caseira bem servida";
-  const thirdPartyNote = /\b(refrigerante|lata|coca|fanta)\b/i.test(original)
-    ? " Se houver lata ou marca de terceiro na foto, manter pequena, cortada ou ao fundo."
-    : "";
-
-  return [
-    `Composição editorial limpa com ${hero} como protagonista.`,
-    "Usar preto, amarelo e vermelho apenas em detalhes gráficos discretos.",
-    thirdPartyNote,
-    "Sem efeitos agressivos, sem estética de anúncio e sem CTA visual.",
-  ]
-    .join(" ")
-    .replace(/\s+/g, " ")
+function sanitizeLogoDirection(value: string): string {
+  return value
+    .replace(/\b(logotipo|logo)\s+(ao fundo|no fundo|em destaque|vis[ií]vel|aplicad[ao]|da marca)\b/gi, "marca fotografada preservada sem redesenho")
+    .replace(/\b(usar|adicionar|colocar|inserir|aplicar)\s+(a\s+)?(logo|logotipo)\b/gi, "preservar apenas marcas já fotografadas")
+    .replace(/\bcom\s+(logo|logotipo)\b/gi, "com marca original da foto preservada")
     .trim();
 }
 
 function sanitizeVisualDirection(value: string, brandContext: BrandContext): string {
   const original = value.trim();
-  if (isFrangoContext(brandContext) && BAD_VISUAL_DIRECTION_PATTERNS.some((pattern) => pattern.test(original))) {
-    return safeFrangoVisualDirection(original);
-  }
+  if (isFrangoBrandContext(brandContext)) return buildFrangoSafeVisualDirection(sanitizeLogoDirection(original));
 
-  return sanitizeForbiddenTerms(original, brandContext)
+  return sanitizeLogoDirection(sanitizeForbiddenTerms(original, brandContext))
     .replace(/\b(bot[aã]o|pill|badge|sticker|enquete|quiz|brush grunge|grunge pesado)\b/gi, "texto editorial discreto")
     .replace(/\b(chamas|fa[ií]scas|labaredas)\b/gi, "luz quente");
 }
@@ -250,8 +222,10 @@ export async function runQA(params: {
           "REGRAS GERAIS:",
           "- Nunca invente itens de cardápio ou fatos fora do briefing.",
           "- Não recriar ou descrever logo para ser gerado por IA.",
+          "- Se visual_direction pedir logo/logotipo, substitua por preservação da marca já fotografada ou deixe a logo para overlay externo; nunca peça à IA para redesenhar/aplicar logo.",
           "- Bloqueie linguagem visual que contradiz a operação: ex. comida caseira não deve virar churrasco premium/brasa/fogo/grunge.",
           "- Se houver refrigerante/lata/marca de terceiro na foto, ela não pode virar foco do frame.",
+          "- Para Frango na Brazza, aplique esta regra preventiva sem exceção: " + frangoPromptSafetyBlock(),
           "- Corrija violações diretamente no campo, não apenas liste o problema.",
           "- Responda apenas em português do Brasil.",
         ].join("\n"),

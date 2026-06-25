@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { GenerationProgress } from "./GenerationProgress";
+import { isGeneratableMediaAsset, isProbablyLogoAsset, uniqueAssetsById } from "@/lib/asset-classification";
 import type {
   Asset,
   CampaignObjective,
@@ -28,9 +29,14 @@ type Brief = {
 type FrameGenerationError = {
   detail: string;
   issues: string[];
+  issue_codes: string[];
+  remediation_steps: string[];
+  preflight_notes: string[];
   notes?: string;
   attempts?: number;
 };
+
+type LogoPolicy = "none" | "discreet" | "required" | "source_only";
 
 const DEFAULT_BRIEF: Brief = {
   objective: "vendas",
@@ -47,12 +53,18 @@ export function Studio({ clients }: Props) {
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [brief, setBrief] = useState<Brief>(DEFAULT_BRIEF);
   const [media, setMedia] = useState<Asset[]>([]);
+  const [logos, setLogos] = useState<Asset[]>([]);
   const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([]);
   const [pkg, setPkg] = useState<StoryPackage | null>(null);
   const [aiByFrame, setAiByFrame] = useState<Record<string, Asset>>({});
   const [generatingFrame, setGeneratingFrame] = useState<Record<string, boolean>>({});
   const [frameErrors, setFrameErrors] = useState<Record<string, FrameGenerationError>>({});
-  const [promptPreview, setPromptPreview] = useState<{ frame: Frame; prompt: string } | null>(null);
+  const [promptPreview, setPromptPreview] = useState<{
+    frame: Frame;
+    prompt: string;
+    preflight_notes: string[];
+    logo_policy: LogoPolicy;
+  } | null>(null);
   const [loadingPrompt, setLoadingPrompt] = useState(false);
   const [history, setHistory] = useState<StoryPackage[]>([]);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
@@ -70,17 +82,23 @@ export function Studio({ clients }: Props) {
     let active = true;
     (async () => {
       try {
-        const [mediaRes, histRes, usageRes] = await Promise.all([
+        const [mediaRes, logoRes, histRes, usageRes] = await Promise.all([
           fetch(`/api/clients/${clientId}/assets?role=media`),
+          fetch(`/api/clients/${clientId}/assets?role=logo`),
           fetch(`/api/clients/${clientId}/packages`),
           fetch(`/api/clients/${clientId}/usage`),
         ]);
         const mediaData = await mediaRes.json();
+        const logoData = await logoRes.json();
         const histData = await histRes.json();
         const usageData = await usageRes.json();
         if (!active) return;
-        const imageMedia = (mediaData.items ?? []).filter((a: Asset) => a.mime_type.startsWith("image/"));
+        const imageAssets = (mediaData.items ?? []).filter((a: Asset) => a.mime_type.startsWith("image/"));
+        const imageMedia = imageAssets.filter(isGeneratableMediaAsset);
+        const inferredLogos = imageAssets.filter(isProbablyLogoAsset);
+        const imageLogos = (logoData.items ?? []).filter((a: Asset) => a.mime_type.startsWith("image/"));
         setMedia(imageMedia);
+        setLogos(uniqueAssetsById([...imageLogos, ...inferredLogos]));
         setSelectedMediaIds(imageMedia.slice(0, Math.min(MAX_SELECTED_MEDIA, Math.max(DEFAULT_BRIEF.frames, 4))).map((a: Asset) => a.id));
         setHistory(histData.items ?? []);
         setUsage(usageData);
@@ -215,7 +233,12 @@ export function Studio({ clients }: Props) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || `Erro ${res.status}`);
-      setPromptPreview({ frame, prompt: data.prompt });
+      setPromptPreview({
+        frame,
+        prompt: data.prompt,
+        preflight_notes: Array.isArray(data.preflight_notes) ? data.preflight_notes : [],
+        logo_policy: "discreet",
+      });
     } catch (err) {
       setMessage(`Erro ao montar prompt: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -223,7 +246,7 @@ export function Studio({ clients }: Props) {
     }
   }
 
-  async function generateAi(frame: Frame, promptOverride?: string) {
+  async function generateAi(frame: Frame, promptOverride?: string, logoPolicy: LogoPolicy = "discreet") {
     if (!client) return;
     const source = mediaFor(frame);
     if (!source) {
@@ -256,24 +279,37 @@ export function Studio({ clients }: Props) {
           offer: pkg?.offer,
           quality: "medium",
           prompt_override: promptOverride,
+          logo_policy: logoPolicy,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
         const issues = Array.isArray(data.image_qa?.issues) ? data.image_qa.issues : [];
+        const issueCodes = Array.isArray(data.image_qa?.issue_codes) ? data.image_qa.issue_codes : [];
+        const remediationSteps = Array.isArray(data.remediation_steps)
+          ? data.remediation_steps
+          : Array.isArray(data.image_qa?.remediation_steps)
+            ? data.image_qa.remediation_steps
+            : [];
+        const preflightNotes = Array.isArray(data.preflight_notes) ? data.preflight_notes : [];
         const detail = data.detail || `Erro ${res.status}`;
         setFrameErrors((cur) => ({
           ...cur,
           [frame.id]: {
             detail,
             issues,
+            issue_codes: issueCodes,
+            remediation_steps: remediationSteps,
+            preflight_notes: preflightNotes,
             notes: data.image_qa?.notes,
             attempts: data.attempts,
           },
         }));
         setMessage(
           res.status === 422
-            ? "A imagem foi gerada, mas o guardião visual reprovou. Veja os motivos no frame."
+            ? data.attempts === 0
+              ? "A foto de origem foi barrada pelo guardião preventivo. Veja o plano no frame."
+              : "A imagem foi gerada, mas o guardião visual reprovou. Veja os motivos no frame."
             : `Erro ao gerar com IA: ${detail}`
         );
         return;
@@ -310,8 +346,9 @@ export function Studio({ clients }: Props) {
                   ))}
                 </select>
               </label>
-              <div className="upload-status">
-                {selectedMedia.length} de {media.length} imagem(ns) selecionada(s) ·{" "}
+            <div className="upload-status">
+                {selectedMedia.length} de {media.length} foto(s) gerável(is) selecionada(s) ·{" "}
+                {logos.length} logo(s) ·{" "}
                 {client && <Link href={`/clientes/${client.id}`}>gerenciar cliente</Link>}
               </div>
             </article>
@@ -353,7 +390,7 @@ export function Studio({ clients }: Props) {
                 </div>
               ) : (
                 <div className="empty-media-picker">
-                  Nenhuma imagem cadastrada para este cliente.
+                  Nenhuma foto gerável cadastrada para este cliente. Logos, cardápios e artes prontas ficam fora da sugestão.
                 </div>
               )}
             </article>
@@ -494,14 +531,48 @@ export function Studio({ clients }: Props) {
                       </div>
                       {frameError && (
                         <div className="frame-error">
-                          <strong>Guardião visual barrou esta imagem</strong>
+                          <strong>
+                            {frameError.attempts === 0
+                              ? "Guardião preventivo barrou a foto fonte"
+                              : "Guardião visual barrou esta imagem"}
+                          </strong>
+                          {!!frameError.attempts && (
+                            <small>Foram feitas {frameError.attempts} tentativa(s) com correção automática.</small>
+                          )}
                           <p>{frameError.detail}</p>
+                          {!!frameError.issue_codes.length && (
+                            <div className="frame-error-codes">
+                              {frameError.issue_codes.map((code) => (
+                                <span key={code}>{code}</span>
+                              ))}
+                            </div>
+                          )}
                           {!!frameError.issues.length && (
-                            <ul>
+                            <ul aria-label="Motivos da reprovação">
                               {frameError.issues.map((issue) => (
                                 <li key={issue}>{issue}</li>
                               ))}
                             </ul>
+                          )}
+                          {!!frameError.remediation_steps.length && (
+                            <div className="frame-error-plan">
+                              <span>Plano de correção</span>
+                              <ul>
+                                {frameError.remediation_steps.map((step) => (
+                                  <li key={step}>{step}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {!!frameError.preflight_notes.length && (
+                            <div className="frame-error-plan">
+                              <span>Sinal preventivo</span>
+                              <ul>
+                                {frameError.preflight_notes.map((note) => (
+                                  <li key={note}>{note}</li>
+                                ))}
+                              </ul>
+                            </div>
                           )}
                           {frameError.notes && <small>{frameError.notes}</small>}
                         </div>
@@ -553,11 +624,38 @@ export function Studio({ clients }: Props) {
                 <p>Revise (e edite, se quiser) o texto que será enviado para a IA junto com a foto.</p>
               </div>
             </div>
+            {!!promptPreview.preflight_notes.length && (
+              <div className="prompt-warning">
+                <strong>Guardião preventivo</strong>
+                <ul>
+                  {promptPreview.preflight_notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <textarea
               className="prompt-modal-text"
               value={promptPreview.prompt}
               onChange={(e) => setPromptPreview({ ...promptPreview, prompt: e.target.value })}
             />
+            <label className="field-control logo-policy-control">
+              Uso da logo oficial
+              <select
+                value={promptPreview.logo_policy}
+                onChange={(e) => setPromptPreview({ ...promptPreview, logo_policy: e.target.value as LogoPolicy })}
+              >
+                <option value="discreet">Logo discreta no final</option>
+                <option value="none">Sem logo</option>
+                <option value="required">Logo obrigatória</option>
+                <option value="source_only">Só preservar se já estiver na foto</option>
+              </select>
+              <small>
+                {logos.length
+                  ? "A logo cadastrada será aplicada pelo sistema, sem redesenhar por IA."
+                  : "Cadastre uma logo no cliente para usar as opções discreta ou obrigatória."}
+              </small>
+            </label>
             <div className="prompt-modal-actions">
               <button type="button" className="ghost" onClick={() => setPromptPreview(null)}>
                 Cancelar
@@ -573,9 +671,9 @@ export function Studio({ clients }: Props) {
                 type="button"
                 className="ai-generate"
                 onClick={() => {
-                  const { frame, prompt } = promptPreview;
+                  const { frame, prompt, logo_policy } = promptPreview;
                   setPromptPreview(null);
-                  void generateAi(frame, prompt);
+                  void generateAi(frame, prompt, logo_policy);
                 }}
               >
                 Gerar imagem

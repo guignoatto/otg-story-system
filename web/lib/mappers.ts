@@ -21,6 +21,21 @@ function asStringArray(value: unknown): string[] {
   return [];
 }
 
+function looksLikeLogoAsset(row: AssetRow): boolean {
+  const text = [
+    row.role,
+    row.file_name,
+    row.storage_path,
+    row.notes ?? "",
+    row.extracted_text_preview ?? "",
+  ].join(" ");
+  return (
+    /\[asset_type:logo\]/i.test(text) ||
+    /(^|[\s._-])(logo|logotipo|logomarca|wordmark|s[íi]mbolo|[íi]cone|assinatura)([\s._-]|$)/i.test(text) ||
+    /\b(png\s*transparente|sem\s*fundo)\b/i.test(text)
+  );
+}
+
 export function mapClient(row: ClientRow): ClientProfile {
   return {
     id: row.id,
@@ -43,17 +58,21 @@ export function mapClient(row: ClientRow): ClientProfile {
 }
 
 export function mapAsset(row: AssetRow): Asset {
+  const notes = row.notes ?? null;
+  const role = row.role === "logo" || (row.role === "media" && looksLikeLogoAsset(row))
+    ? "logo"
+    : row.role;
   return {
     id: row.id,
     client_id: row.client_id,
-    role: row.role as AssetRole,
+    role: role as AssetRole,
     file_name: row.file_name,
     mime_type: row.mime_type,
     storage_path: row.storage_path,
     public_url: row.public_url,
     size_bytes: row.size_bytes ?? 0,
     source: (row.source as Asset["source"]) ?? "upload",
-    notes: row.notes,
+    notes,
     detected_colors: asStringArray(row.detected_colors),
     detected_typography: asStringArray(row.detected_typography),
     detected_tone: row.detected_tone,

@@ -10,6 +10,10 @@ type Body = {
   mime_type: string;
 };
 
+function isSupportedLogoImage(mimeType: string, fileName: string): boolean {
+  return mimeType.startsWith("image/") || /\.(png|jpe?g|webp|heic|heif)$/i.test(fileName);
+}
+
 /** Passo 1 do upload: devolve uma URL assinada para o browser enviar o arquivo direto ao Storage. */
 export async function POST(req: NextRequest) {
   try {
@@ -18,11 +22,14 @@ export async function POST(req: NextRequest) {
     const role = body.role;
 
     if (!clientId) return NextResponse.json({ detail: "client_id obrigatório." }, { status: 400 });
-    if (role !== "manual" && role !== "media") {
-      return NextResponse.json({ detail: "role deve ser manual ou media." }, { status: 400 });
+    if (role !== "manual" && role !== "media" && role !== "logo") {
+      return NextResponse.json({ detail: "role deve ser manual, media ou logo." }, { status: 400 });
     }
     if (!body.file_name) {
       return NextResponse.json({ detail: "file_name obrigatório." }, { status: 400 });
+    }
+    if (role === "logo" && !isSupportedLogoImage(body.mime_type || "", body.file_name)) {
+      return NextResponse.json({ detail: "Logo deve ser enviada como imagem." }, { status: 400 });
     }
 
     const client = await getClient(clientId);

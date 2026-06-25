@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     if (!client) return NextResponse.json({ detail: "Cliente não encontrado." }, { status: 404 });
 
     const roleParam = req.nextUrl.searchParams.get("role");
-    const role = roleParam === "manual" || roleParam === "media" || roleParam === "ai"
+    const role = roleParam === "manual" || roleParam === "media" || roleParam === "ai" || roleParam === "logo"
       ? (roleParam as AssetRole)
       : undefined;
 

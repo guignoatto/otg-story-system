@@ -789,6 +789,15 @@ button.compact-action {
   width: 100%;
 }
 
+.drive-thumb.logo-thumb img {
+  object-fit: contain;
+  padding: 8px;
+}
+
+.logo-policy-control {
+  margin-top: var(--space-2);
+}
+
 .drive-file-name,
 .drive-file-meta {
   display: block;
@@ -1103,6 +1112,39 @@ button.compact-action {
 .frame-error ul {
   margin: 0;
   padding-left: var(--space-2);
+}
+
+.frame-error-codes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.frame-error-codes span {
+  background: #fff0dc;
+  border: 1px solid #efc18a;
+  border-radius: 999px;
+  color: #7a3c00;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  padding: 4px 7px;
+}
+
+.frame-error-plan {
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(243, 179, 109, 0.62);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+}
+
+.frame-error-plan span {
+  color: #723700;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .frame-actions {
@@ -1461,6 +1503,32 @@ button.compact-action {
   font-size: 13px;
   line-height: 1.5;
   margin: var(--space-1) 0 0;
+}
+
+.prompt-warning {
+  background: #fff8ef;
+  border: 1px solid #f3b36d;
+  border-radius: var(--radius-md);
+  color: #723700;
+  display: grid;
+  gap: 6px;
+  padding: var(--space-2);
+}
+
+.prompt-warning strong {
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.prompt-warning ul {
+  margin: 0;
+  padding-left: var(--space-3);
+}
+
+.prompt-warning li {
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .prompt-modal-text {

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClient, updateClient } from "@/lib/data/clients";
 import { insertAsset } from "@/lib/data/assets";
-import { convertHeicInStorage, downloadFromStorage, publicUrlFor, removeFromStorage } from "@/lib/storage";
+import { convertHeicInStorage, downloadFromStorage, publicUrlFor, removeFromStorage, uploadToStorage } from "@/lib/storage";
+import { normalizeLogoPng } from "@/lib/generation/logo-overlay";
 import { analyzeManual } from "@/lib/manual";
 import type { Asset, AssetRole } from "@/lib/types";
 
@@ -24,6 +25,10 @@ function isHeic(mimeType: string, fileName: string): boolean {
   );
 }
 
+function isSupportedLogoImage(mimeType: string, fileName: string): boolean {
+  return mimeType.startsWith("image/") || /\.(png|jpe?g|webp|heic|heif)$/i.test(fileName);
+}
+
 function mergeUnique(current: string[], next: string[]): string[] {
   return Array.from(new Set([...current, ...next].map((item) => item.trim()).filter(Boolean)));
 }
@@ -36,11 +41,15 @@ export async function POST(req: NextRequest) {
     const role = body.role;
 
     if (!clientId) return NextResponse.json({ detail: "client_id obrigatório." }, { status: 400 });
-    if (role !== "manual" && role !== "media") {
-      return NextResponse.json({ detail: "role deve ser manual ou media." }, { status: 400 });
+    if (role !== "manual" && role !== "media" && role !== "logo") {
+      return NextResponse.json({ detail: "role deve ser manual, media ou logo." }, { status: 400 });
     }
     if (!body.storage_path) {
       return NextResponse.json({ detail: "storage_path obrigatório." }, { status: 400 });
+    }
+    if (role === "logo" && !isSupportedLogoImage(body.mime_type || "", body.file_name || "")) {
+      await removeFromStorage(body.storage_path).catch(() => {});
+      return NextResponse.json({ detail: "Logo deve ser enviada como imagem." }, { status: 400 });
     }
 
     const client = await getClient(clientId);
@@ -73,19 +82,43 @@ export async function POST(req: NextRequest) {
       size_bytes = converted.size_bytes;
     }
 
+    if (role === "logo") {
+      try {
+        const logoBytes = await downloadFromStorage(storage_path);
+        const pngBytes = await normalizeLogoPng(logoBytes);
+        const normalizedName = file_name.includes(".")
+          ? file_name.replace(/\.[^.]+$/i, ".png")
+          : `${file_name}.png`;
+        const stored = await uploadToStorage({
+          clientSlug: client.slug,
+          role,
+          fileName: normalizedName,
+          mimeType: "image/png",
+          bytes: pngBytes,
+        });
+        await removeFromStorage(storage_path).catch(() => {});
+        storage_path = stored.storage_path;
+        file_name = normalizedName;
+        mime_type = "image/png";
+        size_bytes = pngBytes.byteLength;
+      } catch (err) {
+        await removeFromStorage(storage_path).catch(() => {});
+        throw new Error(`Não consegui normalizar a logo como PNG sem fundo: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
     // Manual de marca: lê do Storage e extrai cores/fontes/tom.
     let analysis = null;
-    let clientProfile = client;
     if (role === "manual") {
       const bytes = await downloadFromStorage(storage_path);
       analysis = await analyzeManual({ fileName: file_name, mimeType: mime_type, bytes });
-      clientProfile = await updateClient(client.id, {
-        name: clientProfile.name,
-        color_palette: mergeUnique(clientProfile.color_palette, analysis.detected_colors),
-        typography: mergeUnique(clientProfile.typography, analysis.detected_typography),
-        tone: clientProfile.tone || analysis.detected_tone || "",
+      await updateClient(client.id, {
+        name: client.name,
+        color_palette: mergeUnique(client.color_palette, analysis.detected_colors),
+        typography: mergeUnique(client.typography, analysis.detected_typography),
+        tone: client.tone || analysis.detected_tone || "",
         manual_status: "Manual analisado por IA",
-        brand_manual_summary: analysis.brand_manual_summary || clientProfile.brand_manual_summary,
+        brand_manual_summary: analysis.brand_manual_summary || client.brand_manual_summary,
       });
     }
 
@@ -98,7 +131,9 @@ export async function POST(req: NextRequest) {
       public_url: publicUrlFor(storage_path),
       size_bytes,
       source: "upload",
-      notes: analysis?.notes ?? "Arquivo recebido.",
+      notes: role === "logo"
+        ? "Logo oficial normalizada em PNG sem fundo pelo sistema."
+        : analysis?.notes ?? "Arquivo recebido.",
       detected_colors: analysis?.detected_colors ?? [],
       detected_typography: analysis?.detected_typography ?? [],
       detected_tone: analysis?.detected_tone ?? null,

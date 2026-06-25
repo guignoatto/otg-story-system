@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClient } from "@/lib/data/clients";
 import { buildImagePrompt } from "@/lib/generation/image-prompt";
+import { buildFrangoPreflightNotes, isFrangoNaBrazzaClient } from "@/lib/generation/frango-safety";
 
 type Body = {
   client_id: string;
@@ -34,8 +35,17 @@ export async function POST(req: NextRequest) {
       story_type: body.story_type,
       offer: body.offer,
     });
+    const preflight_notes = isFrangoNaBrazzaClient(client)
+      ? buildFrangoPreflightNotes([
+          body.headline,
+          body.body,
+          body.cta,
+          body.visual_direction,
+          body.offer,
+        ].filter(Boolean).join(" "))
+      : [];
 
-    return NextResponse.json({ prompt });
+    return NextResponse.json({ prompt, preflight_notes });
   } catch (err) {
     return NextResponse.json(
       { detail: err instanceof Error ? err.message : String(err) },

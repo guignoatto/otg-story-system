@@ -2,6 +2,7 @@ import "server-only";
 import { openai, TEXT_MODEL } from "../openai";
 import { splitLines } from "../utils";
 import type { Asset, BrandContext, ClientProfile, GenerationBrief, MediaInsight } from "../types";
+import { frangoPromptSafetyBlock, hasThirdPartyBrandRisk, isFrangoBrandContext } from "./frango-safety";
 
 // Pilares de conteúdo por objetivo (porta de content_strategy_agent).
 const PILLARS: Record<string, string[]> = {
@@ -84,12 +85,21 @@ function buildSystemPrompt(params: {
     outputFormat === "stories"
       ? [
           "- Para Stories, CTA é texto editorial curto, não componente visual. Nunca peça botão, pill, badge clicável, sticker, enquete ou UI falsa.",
+          "- Para Stories, CTA deve ser uma ação orgânica curta como 'Manda para quem iria contigo', 'Compartilha no direct' ou 'Responde com emoji'. Não use slogan contemplativo como CTA.",
           "- Para Stories, não use layout de 'save card' nem incentive salvar/guardar.",
           "- Para Stories, evite CTA grande no rodapé porque conflita com a área de resposta do Instagram.",
         ]
       : [
           "- Para carrossel/feed, salvar/compartilhar pode aparecer se fizer sentido, mas sem visual de anúncio pago.",
         ];
+  const frangoSpecific = brandContext && isFrangoBrandContext(brandContext)
+    ? [
+        "- Para Frango na Brazza, o território obrigatório é comida caseira, almoço, marmitex, prato feito e delivery.",
+        "- Para Frango na Brazza, nunca use brasa/fogo/churrasco/grelhado/frango assado/crocância como texto, conceito ou direção visual.",
+        "- Para Frango na Brazza, lata/refrigerante secundário na foto é permitido; só evite a mídia quando lata/refrigerante/marca de terceiro for dominante ou competir com a comida.",
+        "- Regra preventiva de imagem para Frango na Brazza: " + frangoPromptSafetyBlock(),
+      ]
+    : [];
 
   return [
     "Você é o diretor criativo da OTG Mídia, especialista em conteúdo orgânico de Instagram (Stories e carrossel) para restaurantes brasileiros.",
@@ -104,8 +114,10 @@ function buildSystemPrompt(params: {
     forbiddenNote,
     "- Não invente itens de cardápio, preços ou fatos fora do briefing.",
     "- A logo NUNCA é descrita como elemento a recriar; a direção visual deve preservar marcas fotografadas como estão.",
-    "- Se uma mídia tiver refrigerante/lata/marca de terceiros, não transforme isso em foco do frame e não escreva como se fosse parceria.",
+    "- Nunca peça 'logo ao fundo', 'logotipo em destaque' ou aplicação de marca dentro da geração. A logo oficial, quando usada, é aplicada depois por overlay de PNG transparente.",
+    "- Se uma mídia tiver refrigerante/lata/marca de terceiros, isso pode permanecer secundário; não transforme em foco do frame e não escreva como se fosse parceria.",
     "- visual_direction deve orientar composição editorial; não deve pedir chamas, faíscas, brush grunge ou cartaz agressivo quando isso não estiver explicitamente no manual.",
+    ...frangoSpecific,
     `- layout_style deve ser um de: ${LAYOUT_STYLES.join(", ")}.`,
     "- Se houver mídias reais fornecidas, distribua-as entre os frames usando media_filename (use exatamente o nome listado). Se não houver, use null.",
     "- headline curta (até ~6 palavras). body com 1 frase. cta é uma chamada orgânica curta, sem instrução visual de botão.",
@@ -124,6 +136,17 @@ function buildUserPrompt(params: {
   const { client, brief, media, mediaInsights, brandContext } = params;
   const rules = splitLines(client.notes);
   const pillars = PILLARS[brief.objective] || ["Gancho", "Autoridade", "Interacao", "Lembrete"];
+  const isFrango = brandContext ? isFrangoBrandContext(brandContext) : false;
+  const syntheticManualLine = isFrango
+    ? "Manual sintético seguro: Frango na Brazza é comida caseira, almoço, marmitex, prato feito e delivery. Não usar brasa, fogo, churrasco, grelhado, frango assado, frango suculento, suculência ou crocância. Lata/refrigerante na foto é permitido quando secundário; não pode virar foco."
+    : client.synthetic_manual
+      ? `Manual sintético: ${client.synthetic_manual}`
+      : "";
+  const brandManualLine = isFrango
+    ? "Resumo do manual de marca: identidade popular, direta e quente para comida caseira; preto, amarelo e vermelho apenas como detalhes; foto real de almoço/marmitex como protagonista."
+    : client.brand_manual_summary
+      ? `Resumo do manual de marca: ${client.brand_manual_summary}`
+      : "";
 
   // Build enriched media list: se há insights de visão, usa a descrição; senão, só o nome.
   const insightByName = new Map((mediaInsights ?? []).map((i) => [i.file_name, i]));
@@ -132,7 +155,12 @@ function buildUserPrompt(params: {
     if (insight) {
       const bestFor = insight.best_for.length ? ` | ideal para: ${insight.best_for.join(", ")}` : "";
       const avoid = insight.avoid_for.length ? ` | evitar para: ${insight.avoid_for.join(", ")}` : "";
-      return `- ${m.file_name} → "${insight.visual_description}" | mood: ${insight.mood} | qualidade: ${insight.quality_score}/10${bestFor}${avoid}`;
+      const thirdPartyWarning = isFrango && hasThirdPartyBrandRisk(
+        `${insight.visual_description} ${insight.mood} ${insight.avoid_for.join(" ")}`
+      )
+        ? " | risco Frango: não usar como hero de IA; trocar se houver alternativa"
+        : "";
+      return `- ${m.file_name} → "${insight.visual_description}" | mood: ${insight.mood} | qualidade: ${insight.quality_score}/10${bestFor}${avoid}${thirdPartyWarning}`;
     }
     return `- ${m.file_name}`;
   });
@@ -154,8 +182,8 @@ function buildUserPrompt(params: {
     client.tone ? `Tom de voz: ${client.tone}` : "",
     client.color_palette.length ? `Paleta: ${client.color_palette.join(", ")}` : "",
     client.typography.length ? `Tipografia: ${client.typography.join(", ")}` : "",
-    client.synthetic_manual ? `Manual sintético: ${client.synthetic_manual}` : "",
-    client.brand_manual_summary ? `Resumo do manual de marca: ${client.brand_manual_summary}` : "",
+    syntheticManualLine,
+    brandManualLine,
     brandLines.length ? "\nCONTEXTO DE MARCA (estruturado):\n" + brandLines.map((l) => `- ${l}`).join("\n") : "",
     "",
     "REGRAS OPERACIONAIS DO CLIENTE:",
@@ -172,7 +200,7 @@ function buildUserPrompt(params: {
     "MÍDIAS REAIS DISPONÍVEIS (use os nomes em media_filename):",
     mediaLines.length ? mediaLines.join("\n") : "- (nenhuma)",
     mediaLines.length
-      ? "Se uma mídia tiver lata/refrigerante/logo de terceiro ou elemento que distraia, escolha outra quando possível. Se precisar usar, mantenha isso secundário e não cite como destaque."
+      ? "Se uma mídia tiver lata/refrigerante/logo de terceiro dominante ou elemento que distraia, escolha outra quando possível. Se for secundário, pode usar, mantendo esse elemento fora do foco e sem citar como destaque."
       : "",
     "",
     `Gere exatamente ${brief.frames} frames, numerados de 1 a ${brief.frames}.`,

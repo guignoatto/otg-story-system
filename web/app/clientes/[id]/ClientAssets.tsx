@@ -8,16 +8,19 @@ type Props = {
   clientId: string;
   initialMedia: Asset[];
   initialManuals: Asset[];
+  initialLogos: Asset[];
   mediaSourceUrl: string;
 };
 
-export function ClientAssets({ clientId, initialMedia, initialManuals, mediaSourceUrl }: Props) {
+export function ClientAssets({ clientId, initialMedia, initialManuals, initialLogos, mediaSourceUrl }: Props) {
   const [media, setMedia] = useState<Asset[]>(initialMedia);
   const [manuals, setManuals] = useState<Asset[]>(initialManuals);
+  const [logos, setLogos] = useState<Asset[]>(initialLogos);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const mediaInput = useRef<HTMLInputElement>(null);
   const manualInput = useRef<HTMLInputElement>(null);
+  const logoInput = useRef<HTMLInputElement>(null);
 
   // Upload direto ao Storage (sem passar pela função): evita o limite de 4,5 MB
   // de corpo de requisição da Vercel. Por arquivo: assina → envia → registra.
@@ -71,6 +74,7 @@ export function ClientAssets({ clientId, initialMedia, initialManuals, mediaSour
         try {
           const asset = await uploadOne(role, file);
           if (role === "media") setMedia((cur) => [asset, ...cur]);
+          else if (role === "logo") setLogos((cur) => [asset, ...cur]);
           else setManuals((cur) => [asset, ...cur]);
           done += 1;
         } catch (err) {
@@ -86,6 +90,7 @@ export function ClientAssets({ clientId, initialMedia, initialManuals, mediaSour
       setBusy(false);
       if (mediaInput.current) mediaInput.current.value = "";
       if (manualInput.current) manualInput.current.value = "";
+      if (logoInput.current) logoInput.current.value = "";
     }
   }
 
@@ -94,8 +99,9 @@ export function ClientAssets({ clientId, initialMedia, initialManuals, mediaSour
       const res = await fetch(`/api/assets/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`Erro ${res.status}`);
       if (role === "manual") setManuals((cur) => cur.filter((a) => a.id !== id));
+      else if (role === "logo") setLogos((cur) => cur.filter((a) => a.id !== id));
       else setMedia((cur) => cur.filter((a) => a.id !== id));
-      setStatus(role === "manual" ? "Manual removido." : "Mídia removida.");
+      setStatus(role === "manual" ? "Manual removido." : role === "logo" ? "Logo removida." : "Mídia removida.");
     } catch {
       setStatus("Não foi possível remover o arquivo agora.");
     }
@@ -176,6 +182,50 @@ export function ClientAssets({ clientId, initialMedia, initialManuals, mediaSour
             )}
           </div>
         ))}
+      </article>
+
+      <article className="form-card">
+        <div className="card-title">
+          <div>
+            <span>Logos oficiais</span>
+            <small>Imagem da logo — o sistema salva como PNG sem fundo e aplica depois da IA</small>
+          </div>
+        </div>
+        <input
+          ref={logoInput}
+          type="file"
+          accept="image/*,.heic,.heif"
+          disabled={busy}
+          onChange={(e) => void upload("logo", e.target.files)}
+        />
+        <div className="drive-catalog">
+          {logos.length === 0 && <div className="muted">Nenhuma logo cadastrada.</div>}
+          {logos.map((asset) => (
+            <div key={asset.id} className="drive-catalog-item" style={{ gridTemplateColumns: "64px 1fr auto" }}>
+              <div className="drive-thumb logo-thumb">
+                {asset.mime_type.startsWith("image/") && asset.public_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={asset.public_url} alt={asset.file_name} />
+                ) : (
+                  "logo"
+                )}
+              </div>
+              <div>
+                <span className="drive-file-name">{asset.file_name}</span>
+                <span className="drive-file-meta">{asset.mime_type}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void deleteAssetFromLibrary(asset.id, "logo")}
+                disabled={busy}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: "4px 8px", fontSize: "16px", lineHeight: 1 }}
+                title="Remover logo"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
       </article>
 
       <article className="form-card">
