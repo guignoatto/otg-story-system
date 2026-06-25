@@ -54,6 +54,12 @@ type ReferencesState = {
   rejected: ReferenceItem[];
 };
 
+type FeedbackNotice = {
+  kind: "success" | "warning" | "error";
+  title: string;
+  body: string;
+};
+
 const DEFAULT_BRIEF: Brief = {
   objective: "vendas",
   story_type: "promocao",
@@ -93,6 +99,7 @@ export function Studio({ clients }: Props) {
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Selecione um cliente e gere um pacote.");
+  const [feedbackNotice, setFeedbackNotice] = useState<FeedbackNotice | null>(null);
 
   const client = useMemo(() => clients.find((c) => c.id === clientId), [clients, clientId]);
   const selectedMedia = useMemo(
@@ -145,6 +152,12 @@ export function Studio({ clients }: Props) {
       active = false;
     };
   }, [clientId]);
+
+  useEffect(() => {
+    if (!feedbackNotice) return;
+    const timeout = window.setTimeout(() => setFeedbackNotice(null), 5200);
+    return () => window.clearTimeout(timeout);
+  }, [feedbackNotice]);
 
   function setBriefField<K extends keyof Brief>(key: K, value: Brief[K]) {
     setBrief((prev) => ({ ...prev, [key]: value }));
@@ -285,12 +298,26 @@ export function Studio({ clients }: Props) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || `Erro ${res.status}`);
       setFeedbackByFrame((cur) => ({ ...cur, [frame.id]: status }));
-      setMessage(status === "approved"
+      const successMessage = status === "approved"
         ? "Referência aprovada e salva na memória do cliente."
-        : "Reprovação salva. Os agentes vão evitar esse padrão nas próximas gerações.");
+        : "Reprovação salva. Os agentes vão evitar esse padrão nas próximas gerações.";
+      setMessage(successMessage);
+      setFeedbackNotice({
+        kind: status === "approved" ? "success" : "warning",
+        title: status === "approved" ? "Referência aprovada" : "Referência reprovada",
+        body: status === "approved"
+          ? "Recebido. Esta arte entrou na biblioteca de referências aprovadas e vai orientar as próximas gerações."
+          : "Recebido. Esse padrão foi salvo como reprovação e passa a ser evitado pelos agentes.",
+      });
       void refreshReferences();
     } catch (err) {
-      setMessage(`Erro ao salvar feedback: ${err instanceof Error ? err.message : String(err)}`);
+      const errorMessage = `Erro ao salvar feedback: ${err instanceof Error ? err.message : String(err)}`;
+      setMessage(errorMessage);
+      setFeedbackNotice({
+        kind: "error",
+        title: "Feedback não foi salvo",
+        body: errorMessage,
+      });
     } finally {
       setFeedbackBusy((cur) => ({ ...cur, [frame.id]: false }));
     }
@@ -444,6 +471,17 @@ export function Studio({ clients }: Props) {
 
   return (
     <main className="app-shell">
+      {feedbackNotice && (
+        <div className={`feedback-notice ${feedbackNotice.kind}`} role="status" aria-live="polite">
+          <div>
+            <strong>{feedbackNotice.title}</strong>
+            <span>{feedbackNotice.body}</span>
+          </div>
+          <button type="button" className="feedback-notice-close" onClick={() => setFeedbackNotice(null)} aria-label="Fechar aviso">
+            ×
+          </button>
+        </div>
+      )}
       <section className="content-grid">
         {/* Painel de briefing */}
         <section className="panel control-panel">
