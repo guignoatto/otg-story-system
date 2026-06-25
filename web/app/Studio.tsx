@@ -71,6 +71,14 @@ const DEFAULT_BRIEF: Brief = {
 
 const MAX_SELECTED_MEDIA = 24;
 const WEEKLY_STORY_COUNT = 21;
+const WEEKLY_AUTOPILOT_BRIEF: Brief = {
+  objective: "relacionamento",
+  story_type: "cardapio",
+  output_format: "stories",
+  frames: WEEKLY_STORY_COUNT,
+  offer: "Piloto automático semanal: a IA define temas, produtos e ângulos com base nas fotos, manual, operação e memória do cliente.",
+  cta: "A IA define uma chamada orgânica por story, sem WhatsApp, salvar, enquete, botão falso ou linguagem de anúncio.",
+};
 
 function refValue(frame: Frame, prefix: string): string {
   const raw = frame.refs.find((ref) => ref.startsWith(prefix));
@@ -191,6 +199,7 @@ function mediaSelectionTarget(brief: Brief, weeklyMode: boolean): number {
 export function Studio({ clients }: Props) {
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [brief, setBrief] = useState<Brief>(DEFAULT_BRIEF);
+  const [manualBrief, setManualBrief] = useState<Brief>(DEFAULT_BRIEF);
   const [media, setMedia] = useState<Asset[]>([]);
   const [logos, setLogos] = useState<Asset[]>([]);
   const [mediaInsights, setMediaInsights] = useState<Record<string, MediaInsight>>({});
@@ -299,6 +308,29 @@ export function Studio({ clients }: Props) {
     setMessage(`Sugeri ${suggested.length} foto(s) com variedade de assuntos para esta leva.`);
   }
 
+  function toggleWeeklyMode() {
+    if (weeklyMode) {
+      setWeeklyMode(false);
+      setBrief(manualBrief);
+      setMessage("Lote semanal desativado. Voltei para o briefing manual.");
+      return;
+    }
+
+    setManualBrief(brief);
+    setWeeklyMode(true);
+    setBrief(WEEKLY_AUTOPILOT_BRIEF);
+    if (media.length) {
+      const suggested = selectDiverseMedia(
+        media,
+        mediaInsights,
+        WEEKLY_AUTOPILOT_BRIEF.objective,
+        mediaSelectionTarget(WEEKLY_AUTOPILOT_BRIEF, true)
+      );
+      setSelectedMediaIds(suggested.map((asset) => asset.id));
+    }
+    setMessage("Lote semanal no piloto automático: objetivo, formato, tipo, tema e chamadas serão decididos pelos agentes.");
+  }
+
   async function curateMedia() {
     if (!client || !media.length) return;
     const scope = selectedMediaIds.length
@@ -339,7 +371,8 @@ export function Studio({ clients }: Props) {
 
   async function generate() {
     if (!client) return;
-    if (!brief.offer.trim() || !brief.cta.trim()) {
+    const activeBrief = weeklyMode ? WEEKLY_AUTOPILOT_BRIEF : brief;
+    if (!weeklyMode && (!activeBrief.offer.trim() || !activeBrief.cta.trim())) {
       setMessage("Preencha tema/produto e a chamada orgânica.");
       return;
     }
@@ -356,8 +389,8 @@ export function Studio({ clients }: Props) {
         body: JSON.stringify({
           client_id: client.id,
           restaurant_name: client.name,
-          ...brief,
-          frames: weeklyMode ? WEEKLY_STORY_COUNT : brief.frames,
+          ...activeBrief,
+          frames: weeklyMode ? WEEKLY_STORY_COUNT : activeBrief.frames,
           weekly_batch: weeklyMode,
           media_asset_ids: selectedMediaIds,
         }),
@@ -696,35 +729,32 @@ export function Studio({ clients }: Props) {
               <div className={`mode-callout${weeklyMode ? " is-active" : ""}`}>
                 <div>
                   <strong>Lote semanal</strong>
-                  <span>Gera 21 stories: 7 dias com 3 stories por dia, variando proposta e pilar editorial.</span>
+                  <span>
+                    Gera 21 stories: 7 dias com 3 stories por dia. Ao ativar, os agentes decidem objetivo, tema, tipo e chamadas.
+                  </span>
                 </div>
                 <button
                   type="button"
                   className={weeklyMode ? "approve compact-action" : "ghost compact-action"}
                   disabled={busy}
-                  onClick={() => {
-                    const nextWeeklyMode = !weeklyMode;
-                    setWeeklyMode(nextWeeklyMode);
-                    setBrief((prev) => ({ ...prev, frames: nextWeeklyMode ? WEEKLY_STORY_COUNT : 4 }));
-                    if (nextWeeklyMode && media.length && selectedMediaIds.length < WEEKLY_STORY_COUNT) {
-                      const suggested = selectDiverseMedia(
-                        media,
-                        mediaInsights,
-                        brief.objective,
-                        mediaSelectionTarget({ ...brief, frames: WEEKLY_STORY_COUNT }, true)
-                      );
-                      setSelectedMediaIds(suggested.map((asset) => asset.id));
-                      setMessage("Lote semanal ativo: aumentei a seleção para buscar mais variedade de fotos.");
-                    }
-                  }}
+                  onClick={toggleWeeklyMode}
                 >
                   {weeklyMode ? "Ativo" : "Ativar"}
                 </button>
               </div>
+              {weeklyMode && (
+                <div className="weekly-autopilot">
+                  <strong>Piloto automático ligado</strong>
+                  <span>
+                    O sistema vai montar uma semana real de conteúdo orgânico: 3 stories por dia, formato sempre Stories,
+                    variação de pilares editoriais e chamadas adequadas para cada frame.
+                  </span>
+                </div>
+              )}
               <div className="two-columns">
-                <label className="field-control">
+                <label className={`field-control${weeklyMode ? " is-disabled" : ""}`}>
                   Objetivo
-                  <select value={brief.objective} disabled={busy} onChange={(e) => setBriefField("objective", e.target.value as CampaignObjective)}>
+                  <select value={brief.objective} disabled={busy || weeklyMode} onChange={(e) => setBriefField("objective", e.target.value as CampaignObjective)}>
                     <option value="vendas">Vendas orgânicas</option>
                     <option value="reservas">Ocasião planejada</option>
                     <option value="engajamento">Engajamento</option>
@@ -733,22 +763,22 @@ export function Studio({ clients }: Props) {
                     <option value="relacionamento">Relacionamento</option>
                   </select>
                 </label>
-                <label className="field-control">
+                <label className={`field-control${weeklyMode ? " is-disabled" : ""}`}>
                   Formato
-                  <select value={brief.output_format} disabled={busy} onChange={(e) => setBriefField("output_format", e.target.value as OutputFormat)}>
+                  <select value={brief.output_format} disabled={busy || weeklyMode} onChange={(e) => setBriefField("output_format", e.target.value as OutputFormat)}>
                     <option value="stories">Stories</option>
                     <option value="carrossel">Carrossel</option>
                   </select>
                 </label>
               </div>
               <div className="two-columns">
-                <label className="field-control">
+                <label className={`field-control${weeklyMode ? " is-disabled" : ""}`}>
                   Tipo de conteúdo
-                  <select value={brief.story_type} disabled={busy} onChange={(e) => setBriefField("story_type", e.target.value as StoryType)}>
+                  <select value={brief.story_type} disabled={busy || weeklyMode} onChange={(e) => setBriefField("story_type", e.target.value as StoryType)}>
                     <option value="promocao">Destaque do dia</option>
                     <option value="bastidor">Bastidor</option>
                     <option value="prova_social">Prova social</option>
-                    <option value="cardapio">Cardápio</option>
+                    <option value="cardapio">{weeklyMode ? "Mix semanal automático" : "Cardápio"}</option>
                     <option value="urgencia">Lembrete</option>
                   </select>
                 </label>
@@ -768,13 +798,13 @@ export function Studio({ clients }: Props) {
                   />
                 </label>
               </div>
-              <label className="field-control">
+              <label className={`field-control${weeklyMode ? " is-disabled" : ""}`}>
                 Tema ou produto
-                <input value={brief.offer} disabled={busy} onChange={(e) => setBriefField("offer", e.target.value)} />
+                <input value={brief.offer} disabled={busy || weeklyMode} onChange={(e) => setBriefField("offer", e.target.value)} />
               </label>
-              <label className="field-control">
+              <label className={`field-control${weeklyMode ? " is-disabled" : ""}`}>
                 Chamada orgânica
-                <input value={brief.cta} disabled={busy} onChange={(e) => setBriefField("cta", e.target.value)} />
+                <input value={brief.cta} disabled={busy || weeklyMode} onChange={(e) => setBriefField("cta", e.target.value)} />
               </label>
             </article>
 

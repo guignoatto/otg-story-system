@@ -16,12 +16,26 @@ function estimateCostBrl(frames: number): number {
   return Number((0.25 + frames * 0.12).toFixed(2));
 }
 
+function normalizeBrief(brief: GenerationBrief): GenerationBrief {
+  if (!brief.weekly_batch) return brief;
+  return {
+    ...brief,
+    objective: "relacionamento",
+    story_type: "cardapio",
+    output_format: "stories",
+    frames: WEEKLY_FRAME_COUNT,
+    offer: "Piloto automático semanal: decidir temas, produtos e ângulos por dia com base nas fotos, manual, operação e memória do cliente.",
+    cta: "Decidir uma chamada orgânica específica para cada story, sem WhatsApp, salvar, enquete, botão falso ou linguagem de anúncio.",
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const brief = (await req.json()) as GenerationBrief;
-    if (!brief?.client_id) {
+    const rawBrief = (await req.json()) as GenerationBrief;
+    if (!rawBrief?.client_id) {
       return NextResponse.json({ detail: "client_id obrigatório." }, { status: 400 });
     }
+    const brief = normalizeBrief(rawBrief);
     const client = await getClient(brief.client_id);
     if (!client) return NextResponse.json({ detail: "Cliente não encontrado." }, { status: 404 });
 
@@ -115,12 +129,12 @@ export async function POST(req: NextRequest) {
 
     const pkg = await insertPackageWithFrames({
       client_id: client.id,
-      objective: brief.objective,
-      story_type: brief.story_type,
-      output_format: brief.output_format || "stories",
+      objective: sanitizedBrief.objective,
+      story_type: sanitizedBrief.story_type,
+      output_format: sanitizedBrief.output_format || "stories",
       frames_count: frames.length,
-      offer: brief.offer || "",
-      cta: brief.cta || "",
+      offer: sanitizedBrief.offer || "",
+      cta: sanitizedBrief.cta || "",
       rationale: [
         autoImportNotes.join("\n"),
         result.rationale,

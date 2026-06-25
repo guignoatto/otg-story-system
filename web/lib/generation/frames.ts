@@ -194,10 +194,13 @@ function buildUserPrompt(params: {
   const weeklyPlan = brief.weekly_batch
     ? [
         "PLANEJAMENTO SEMANAL OTG:",
+        "- Modo piloto automático: objetivo, tipo, tema/produto e chamada do briefing são diretrizes de automação, não pauta fixa.",
+        "- Você deve decidir autonomamente o objetivo editorial de cada dia e de cada story, respeitando fotos disponíveis, manual, operação e memória de aprovações/reprovações.",
         "- A OTG posta 3 stories por dia para cada cliente. Este pacote deve ter 21 stories: 7 dias x 3 stories.",
         "- Gere exatamente 21 frames, nesta ordem: segunda 1/3, segunda 2/3, segunda 3/3, terça 1/3... até domingo 3/3.",
         "- Cada dia precisa ter mini-narrativa própria: abrir com gancho/contexto, desenvolver com desejo/prova/bastidor/cardápio, fechar com chamada orgânica.",
         "- Varie as propostas editoriais ao longo da semana. Não faça 21 variações do mesmo texto.",
+        "- Varie também as chamadas orgânicas. Não repita o mesmo CTA em sequência e nunca use WhatsApp, salvar, guardar, enquete, botão falso ou linguagem de anúncio.",
         "- Use a inteligência do sistema para decidir o mix ideal, combinando objetivo, fotos disponíveis, memória de aprovações, operação do restaurante e tipo de cliente.",
         `- Pilares disponíveis para variar: ${WEEKLY_PILLARS.join(", ")}.`,
         "- Não precisa usar todos os pilares, mas evite repetir o mesmo pilar em frames consecutivos.",
@@ -255,8 +258,12 @@ function buildUserPrompt(params: {
     brief.weekly_batch
       ? "- Modo: lote semanal OTG com 21 stories, 3 por dia, distribuídos em calendário editorial."
       : "",
-    `- Tema/produto: ${brief.offer}`,
-    `- Chamada desejada: ${brief.cta}`,
+    brief.weekly_batch
+      ? "- Tema/produto: decidir automaticamente por frame a partir das mídias, manual, operação e memória do cliente."
+      : `- Tema/produto: ${brief.offer}`,
+    brief.weekly_batch
+      ? "- Chamada desejada: decidir automaticamente uma chamada orgânica específica por frame, sem repetir fórmula."
+      : `- Chamada desejada: ${brief.cta}`,
     `- Número de frames: ${brief.frames}`,
     "",
     formatClientMemoryForPrompt(clientMemory),

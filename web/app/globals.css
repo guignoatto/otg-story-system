@@ -942,6 +942,29 @@ button.compact-action {
   margin-top: 4px;
 }
 
+.weekly-autopilot {
+  background:
+    linear-gradient(135deg, rgba(0, 123, 255, 0.10), rgba(0, 174, 239, 0.10)),
+    #ffffff;
+  border: 1px solid rgba(0, 123, 255, 0.24);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2);
+}
+
+.weekly-autopilot strong {
+  color: var(--otg-blue-dark);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.weekly-autopilot span {
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .rationale {
   color: var(--text-soft);
   font-size: 14px;
