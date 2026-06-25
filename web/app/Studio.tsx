@@ -70,6 +70,16 @@ const DEFAULT_BRIEF: Brief = {
 };
 
 const MAX_SELECTED_MEDIA = 10;
+const WEEKLY_STORY_COUNT = 21;
+
+function refValue(frame: Frame, prefix: string): string {
+  const raw = frame.refs.find((ref) => ref.startsWith(prefix));
+  return raw ? raw.slice(prefix.length) : "";
+}
+
+function titleCase(value: string): string {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
 
 export function Studio({ clients }: Props) {
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
@@ -236,7 +246,7 @@ export function Studio({ clients }: Props) {
           client_id: client.id,
           restaurant_name: client.name,
           ...brief,
-          frames: weeklyMode ? Math.max(7, brief.frames) : brief.frames,
+          frames: weeklyMode ? WEEKLY_STORY_COUNT : brief.frames,
           weekly_batch: weeklyMode,
           media_asset_ids: selectedMediaIds,
         }),
@@ -574,7 +584,7 @@ export function Studio({ clients }: Props) {
               <div className={`mode-callout${weeklyMode ? " is-active" : ""}`}>
                 <div>
                   <strong>Lote semanal</strong>
-                  <span>Gera uma sequência maior e mais variada para abastecer a semana.</span>
+                  <span>Gera 21 stories: 7 dias com 3 stories por dia, variando proposta e pilar editorial.</span>
                 </div>
                 <button
                   type="button"
@@ -582,7 +592,7 @@ export function Studio({ clients }: Props) {
                   disabled={busy}
                   onClick={() => {
                     setWeeklyMode((cur) => !cur);
-                    setBrief((prev) => ({ ...prev, frames: weeklyMode ? Math.min(prev.frames, 4) : Math.max(prev.frames, 7) }));
+                    setBrief((prev) => ({ ...prev, frames: weeklyMode ? 4 : WEEKLY_STORY_COUNT }));
                   }}
                 >
                   {weeklyMode ? "Ativo" : "Ativar"}
@@ -624,9 +634,9 @@ export function Studio({ clients }: Props) {
                   <input
                     type="number"
                     min={3}
-                    max={10}
+                    max={weeklyMode ? WEEKLY_STORY_COUNT : 10}
                     value={brief.frames}
-                    disabled={busy}
+                    disabled={busy || weeklyMode}
                     onChange={(e) => {
                       const value = Number(e.target.value);
                       if (Number.isNaN(value)) return;
@@ -646,7 +656,7 @@ export function Studio({ clients }: Props) {
             </article>
 
             <button type="button" className="primary-action" disabled={busy || !client || !selectedMediaIds.length} onClick={() => void generate()}>
-              {busy ? "Produzindo..." : "Gerar pacote de stories"}
+              {busy ? "Produzindo..." : weeklyMode ? "Gerar semana com 21 stories" : "Gerar pacote de stories"}
             </button>
           </div>
         </section>
@@ -689,10 +699,14 @@ export function Studio({ clients }: Props) {
                   const url = imageUrlFor(frame);
                   const isGenerating = !!generatingFrame[frame.id];
                   const frameError = frameErrors[frame.id];
+                  const weeklyDay = refValue(frame, "dia:");
+                  const weeklySlot = refValue(frame, "story:");
+                  const contentPillar = refValue(frame, "pilar:");
+                  const contentGoal = refValue(frame, "proposta:");
                   return (
                     <div key={frame.id} className="frame">
                       <div className="frame-header">
-                        <h4>Frame {frame.idx}</h4>
+                        <h4>{weeklyDay ? `${titleCase(weeklyDay)} · ${weeklySlot || `Story ${frame.idx}`}` : `Frame ${frame.idx}`}</h4>
                         {frameError && <span className="status-pill warning">Reprovada</span>}
                         {aiByFrame[frame.id] && <span className="status-pill">IA</span>}
                         {feedbackByFrame[frame.id] === "approved" && <span className="status-pill">Aprovada</span>}
@@ -712,6 +726,12 @@ export function Studio({ clients }: Props) {
                         )}
                       </div>
                       <div className="frame-copy">
+                        {(contentPillar || contentGoal) && (
+                          <div className="frame-ref-pills">
+                            {contentPillar && <span>{contentPillar}</span>}
+                            {contentGoal && <span>{contentGoal}</span>}
+                          </div>
+                        )}
                         <p><strong>{frame.headline}</strong></p>
                         <p>{frame.body}</p>
                         <p><strong>Chamada:</strong> {frame.cta}</p>

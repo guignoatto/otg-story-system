@@ -8,8 +8,9 @@ import { importDriveFiles } from "@/lib/drive-import";
 import { isGeneratableMediaAsset } from "@/lib/asset-classification";
 import type { GenerationBrief } from "@/lib/types";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 const MAX_SELECTED_MEDIA = 10;
+const WEEKLY_FRAME_COUNT = 21;
 
 function estimateCostBrl(frames: number): number {
   return Number((0.25 + frames * 0.12).toFixed(2));
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
     if (!client) return NextResponse.json({ detail: "Cliente não encontrado." }, { status: 404 });
 
     const frameCount = brief.weekly_batch
-      ? Math.max(7, Math.min(brief.frames || 7, 10))
+      ? WEEKLY_FRAME_COUNT
       : Math.max(3, Math.min(brief.frames || 4, 10));
     let allMedia = (await listAssets(client.id, "media")).filter(isGeneratableMediaAsset);
     const autoImportNotes: string[] = [];
@@ -93,6 +94,12 @@ export async function POST(req: NextRequest) {
     const frames: NewFrame[] = result.frames.map((f, i) => {
       let mediaId: string | null = f.media_filename ? byName.get(f.media_filename) ?? null : null;
       if (!mediaId && media.length) mediaId = media[i % media.length].id;
+      const refs = [
+        f.weekly_day ? `dia:${f.weekly_day}` : "",
+        f.daily_slot ? `story:${f.daily_slot}/3` : "",
+        f.content_pillar ? `pilar:${f.content_pillar}` : "",
+        f.content_goal ? `proposta:${f.content_goal}` : "",
+      ].filter(Boolean);
       return {
         idx: f.index,
         headline: f.headline,
@@ -102,7 +109,7 @@ export async function POST(req: NextRequest) {
         layout_style: f.layout_style,
         media_asset_id: mediaId,
         ai_asset_id: null,
-        refs: [],
+        refs,
       };
     });
 

@@ -16,6 +16,23 @@ const PILLARS: Record<string, string[]> = {
 };
 
 const LAYOUT_STYLES = ["editorial", "split", "full_bleed", "quote"];
+const WEEKLY_DAYS = ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"] as const;
+const WEEKLY_SLOTS = [
+  "Story 1: gancho leve/contexto do dia para abrir a sequência.",
+  "Story 2: prato, produto, bastidor, prova social ou motivo de desejo.",
+  "Story 3: chamada orgânica/conversa/compartilhamento, sem cara de anúncio.",
+] as const;
+const WEEKLY_PILLARS = [
+  "desejo de produto",
+  "bastidor e preparo",
+  "prova social",
+  "rotina/ocasião de consumo",
+  "cardápio sem parecer panfleto",
+  "relacionamento com cliente",
+  "awareness de marca",
+  "alcance local",
+  "lembrete orgânico",
+] as const;
 
 export type GeneratedFrame = {
   index: number;
@@ -25,6 +42,10 @@ export type GeneratedFrame = {
   visual_direction: string;
   layout_style: string;
   media_filename: string | null;
+  weekly_day: string | null;
+  daily_slot: number | null;
+  content_pillar: string | null;
+  content_goal: string | null;
 };
 
 export type GenerationResult = {
@@ -57,6 +78,22 @@ const FRAME_SCHEMA = {
             type: ["string", "null"],
             description: "Nome de arquivo de uma das mídias reais fornecidas, ou null.",
           },
+          weekly_day: {
+            type: ["string", "null"],
+            description: "No modo semanal: dia planejado para o story (segunda, terca, quarta, quinta, sexta, sabado ou domingo). Fora do modo semanal, null.",
+          },
+          daily_slot: {
+            type: ["integer", "null"],
+            description: "No modo semanal: posição do story no dia, 1, 2 ou 3. Fora do modo semanal, null.",
+          },
+          content_pillar: {
+            type: ["string", "null"],
+            description: "Pilar editorial do frame, ex: desejo de produto, bastidor, prova social, relacionamento, alcance local.",
+          },
+          content_goal: {
+            type: ["string", "null"],
+            description: "Proposta específica do story em pt-BR, curta e estratégica.",
+          },
         },
         required: [
           "index",
@@ -66,6 +103,10 @@ const FRAME_SCHEMA = {
           "visual_direction",
           "layout_style",
           "media_filename",
+          "weekly_day",
+          "daily_slot",
+          "content_pillar",
+          "content_goal",
         ],
       },
     },
@@ -122,6 +163,7 @@ function buildSystemPrompt(params: {
     `- layout_style deve ser um de: ${LAYOUT_STYLES.join(", ")}.`,
     "- Se houver mídias reais fornecidas, distribua-as entre os frames usando media_filename (use exatamente o nome listado). Se não houver, use null.",
     "- headline curta (até ~6 palavras). body com 1 frase. cta é uma chamada orgânica curta, sem instrução visual de botão.",
+    "- No modo semanal, use weekly_day, daily_slot, content_pillar e content_goal para explicitar a estratégia editorial de cada story.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -149,6 +191,21 @@ function buildUserPrompt(params: {
     : client.brand_manual_summary
       ? `Resumo do manual de marca: ${client.brand_manual_summary}`
       : "";
+  const weeklyPlan = brief.weekly_batch
+    ? [
+        "PLANEJAMENTO SEMANAL OTG:",
+        "- A OTG posta 3 stories por dia para cada cliente. Este pacote deve ter 21 stories: 7 dias x 3 stories.",
+        "- Gere exatamente 21 frames, nesta ordem: segunda 1/3, segunda 2/3, segunda 3/3, terça 1/3... até domingo 3/3.",
+        "- Cada dia precisa ter mini-narrativa própria: abrir com gancho/contexto, desenvolver com desejo/prova/bastidor/cardápio, fechar com chamada orgânica.",
+        "- Varie as propostas editoriais ao longo da semana. Não faça 21 variações do mesmo texto.",
+        "- Use a inteligência do sistema para decidir o mix ideal, combinando objetivo, fotos disponíveis, memória de aprovações, operação do restaurante e tipo de cliente.",
+        `- Pilares disponíveis para variar: ${WEEKLY_PILLARS.join(", ")}.`,
+        "- Não precisa usar todos os pilares, mas evite repetir o mesmo pilar em frames consecutivos.",
+        "- Campos obrigatórios no modo semanal: weekly_day, daily_slot, content_pillar e content_goal.",
+        "- daily_slot deve ser 1, 2 ou 3. weekly_day deve seguir a sequência: " + WEEKLY_DAYS.join(", ") + ".",
+        "- Função dos slots: " + WEEKLY_SLOTS.join(" | "),
+      ].join("\n")
+    : "";
 
   // Build enriched media list: se há insights de visão, usa a descrição; senão, só o nome.
   const insightByName = new Map((mediaInsights ?? []).map((i) => [i.file_name, i]));
@@ -196,13 +253,14 @@ function buildUserPrompt(params: {
     `- Tipo de conteúdo: ${brief.story_type}`,
     `- Formato: ${brief.output_format}`,
     brief.weekly_batch
-      ? "- Modo: lote semanal. Crie uma sequência variada para vários dias, sem repetir o mesmo gancho. Misture desejo, bastidor/proximidade, prova social, produto e lembrete orgânico."
+      ? "- Modo: lote semanal OTG com 21 stories, 3 por dia, distribuídos em calendário editorial."
       : "",
     `- Tema/produto: ${brief.offer}`,
     `- Chamada desejada: ${brief.cta}`,
     `- Número de frames: ${brief.frames}`,
     "",
     formatClientMemoryForPrompt(clientMemory),
+    weeklyPlan,
     "",
     "MÍDIAS REAIS DISPONÍVEIS (use os nomes em media_filename):",
     mediaLines.length ? mediaLines.join("\n") : "- (nenhuma)",
@@ -211,6 +269,9 @@ function buildUserPrompt(params: {
       : "",
     "",
     `Gere exatamente ${brief.frames} frames, numerados de 1 a ${brief.frames}.`,
+    brief.weekly_batch
+      ? "No modo semanal, o pacote precisa parecer uma semana real de conteúdo orgânico, não uma sequência de anúncios. Priorize variedade, ritmo e progressão editorial."
+      : "",
     mediaInsights?.length
       ? "Use as descrições visuais das mídias para escrever headlines e direções de arte específicas para cada foto."
       : "",
@@ -271,8 +332,22 @@ export async function generateFrames(params: {
       visual_direction: "",
       layout_style: LAYOUT_STYLES[0],
       media_filename: null,
+      weekly_day: params.brief.weekly_batch ? WEEKLY_DAYS[Math.floor((parsed.frames.length) / 3)] ?? null : null,
+      daily_slot: params.brief.weekly_batch ? ((parsed.frames.length % 3) + 1) : null,
+      content_pillar: null,
+      content_goal: null,
     };
     parsed.frames.push({ ...base, index: parsed.frames.length + 1 });
+  }
+
+  if (params.brief.weekly_batch) {
+    parsed.frames = parsed.frames.map((frame, i) => ({
+      ...frame,
+      weekly_day: WEEKLY_DAYS[Math.floor(i / 3)] ?? frame.weekly_day ?? null,
+      daily_slot: (i % 3) + 1,
+      content_pillar: frame.content_pillar || "conteúdo orgânico",
+      content_goal: frame.content_goal || "Manter presença semanal com variedade editorial.",
+    }));
   }
 
   return parsed;

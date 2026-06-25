@@ -35,8 +35,25 @@ const QA_SCHEMA = {
           visual_direction: { type: "string" },
           layout_style: { type: "string", enum: [...LAYOUT_STYLES] },
           media_filename: { type: ["string", "null"] },
+          weekly_day: { type: ["string", "null"] },
+          daily_slot: { type: ["integer", "null"] },
+          content_pillar: { type: ["string", "null"] },
+          content_goal: { type: ["string", "null"] },
         },
-        required: ["index", "passed", "headline", "body", "cta", "visual_direction", "layout_style", "media_filename"],
+        required: [
+          "index",
+          "passed",
+          "headline",
+          "body",
+          "cta",
+          "visual_direction",
+          "layout_style",
+          "media_filename",
+          "weekly_day",
+          "daily_slot",
+          "content_pillar",
+          "content_goal",
+        ],
       },
     },
   },
@@ -176,6 +193,10 @@ export async function runQA(params: {
       visual_direction: f.visual_direction,
       layout_style: f.layout_style,
       media_filename: f.media_filename,
+      weekly_day: f.weekly_day,
+      daily_slot: f.daily_slot,
+      content_pillar: f.content_pillar,
+      content_goal: f.content_goal,
     })),
     null,
     2
@@ -197,6 +218,9 @@ export async function runQA(params: {
     "",
     "Para cada frame: verifique e corrija se necessário. Retorne o frame com headline/body/cta/visual_direction corrigidos.",
     "Se a regra de marca proíbe uma palavra/conceito, corrija também quando aparecer em visual_direction.",
+    brief.weekly_batch
+      ? "Este é um pacote semanal OTG. Preserve a ordem 7 dias x 3 stories, com weekly_day, daily_slot, content_pillar e content_goal coerentes e variados."
+      : "",
   ].join("\n");
 
   const completion = await openai().chat.completions.create({
