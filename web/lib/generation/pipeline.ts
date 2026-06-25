@@ -3,6 +3,7 @@ import { runMediaCurator } from "./agents/media-curator";
 import { runBrandGuard, fallbackBrandContext } from "./agents/brand-guard";
 import { runQA } from "./agents/qa";
 import { generateFrames } from "./frames";
+import { getClientLearningMemory } from "../data/feedback";
 import type { Asset, ClientProfile, GenerationBrief } from "../types";
 import type { GenerationResult } from "./frames";
 
@@ -27,7 +28,7 @@ export async function generatePackage(params: {
   const { client, brief, media } = params;
 
   // Fase 1: agentes de contexto em paralelo (enriquecimento opcional)
-  const [mediaInsights, brandContext] = await Promise.all([
+  const [mediaInsights, brandContext, clientMemory] = await Promise.all([
     runMediaCurator(media).catch((err) => {
       console.error("MediaCurator falhou; gerando sem insights de mídia.", err);
       return [];
@@ -35,6 +36,10 @@ export async function generatePackage(params: {
     runBrandGuard(client).catch((err) => {
       console.error("BrandGuard falhou; usando contexto de marca mínimo.", err);
       return fallbackBrandContext(client);
+    }),
+    getClientLearningMemory(client.id).catch((err) => {
+      console.error("Memória do cliente indisponível; gerando sem histórico de aprovações.", err);
+      return { approved: [], rejected: [], approval_patterns: [], rejection_patterns: [] };
     }),
   ]);
 
@@ -45,6 +50,7 @@ export async function generatePackage(params: {
     media,
     mediaInsights,
     brandContext,
+    clientMemory,
   });
 
   // Fase 3: QA independente (opcional — em falha, publica os frames originais)

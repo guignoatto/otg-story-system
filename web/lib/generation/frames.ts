@@ -3,6 +3,7 @@ import { openai, TEXT_MODEL } from "../openai";
 import { splitLines } from "../utils";
 import type { Asset, BrandContext, ClientProfile, GenerationBrief, MediaInsight } from "../types";
 import { frangoPromptSafetyBlock, hasThirdPartyBrandRisk, isFrangoBrandContext } from "./frango-safety";
+import { formatClientMemoryForPrompt, type ClientLearningMemory } from "../feedback";
 
 // Pilares de conteúdo por objetivo (porta de content_strategy_agent).
 const PILLARS: Record<string, string[]> = {
@@ -132,8 +133,9 @@ function buildUserPrompt(params: {
   media: Asset[];
   mediaInsights?: MediaInsight[];
   brandContext?: BrandContext;
+  clientMemory?: ClientLearningMemory;
 }): string {
-  const { client, brief, media, mediaInsights, brandContext } = params;
+  const { client, brief, media, mediaInsights, brandContext, clientMemory } = params;
   const rules = splitLines(client.notes);
   const pillars = PILLARS[brief.objective] || ["Gancho", "Autoridade", "Interacao", "Lembrete"];
   const isFrango = brandContext ? isFrangoBrandContext(brandContext) : false;
@@ -193,9 +195,14 @@ function buildUserPrompt(params: {
     `- Objetivo: ${brief.objective} (pilares sugeridos: ${pillars.join(", ")})`,
     `- Tipo de conteúdo: ${brief.story_type}`,
     `- Formato: ${brief.output_format}`,
+    brief.weekly_batch
+      ? "- Modo: lote semanal. Crie uma sequência variada para vários dias, sem repetir o mesmo gancho. Misture desejo, bastidor/proximidade, prova social, produto e lembrete orgânico."
+      : "",
     `- Tema/produto: ${brief.offer}`,
     `- Chamada desejada: ${brief.cta}`,
     `- Número de frames: ${brief.frames}`,
+    "",
+    formatClientMemoryForPrompt(clientMemory),
     "",
     "MÍDIAS REAIS DISPONÍVEIS (use os nomes em media_filename):",
     mediaLines.length ? mediaLines.join("\n") : "- (nenhuma)",
@@ -219,6 +226,7 @@ export async function generateFrames(params: {
   media: Asset[];
   mediaInsights?: MediaInsight[];
   brandContext?: BrandContext;
+  clientMemory?: ClientLearningMemory;
 }): Promise<GenerationResult> {
   const completion = await openai().chat.completions.create({
     model: TEXT_MODEL,

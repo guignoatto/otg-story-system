@@ -1,6 +1,7 @@
 import "server-only";
 import type { ClientProfile } from "../types";
 import { splitLines } from "../utils";
+import { formatClientMemoryForPrompt, type ClientLearningMemory } from "../feedback";
 import {
   buildFrangoSafeVisualDirection,
   frangoPromptSafetyBlock,
@@ -23,6 +24,7 @@ export type ImageBriefInput = {
   objective?: string;
   story_type?: string;
   offer?: string;
+  clientMemory?: ClientLearningMemory;
 };
 
 const OBJECTIVE_INTENT: Record<string, string> = {
@@ -147,6 +149,7 @@ export function buildImagePrompt(input: ImageBriefInput): string {
         .filter(Boolean)
         .join(" ");
   const manualNote = manualText ? `Brand manual summary (follow it): ${manualText}.` : "";
+  const memoryNote = formatClientMemoryForPrompt(input.clientMemory);
   const objectiveNote = input.objective && OBJECTIVE_INTENT[input.objective]
     ? isFrango
       ? "Campaign objective: create appetite and desire for a generous homemade meal."
@@ -189,6 +192,9 @@ export function buildImagePrompt(input: ImageBriefInput): string {
     toneNote,
     localNote,
     manualNote,
+    memoryNote
+      ? `Creative learning memory from OTG approvals/rejections. Follow this as taste guidance, not as visible copy: ${memoryNote}`
+      : "",
     objectiveNote,
     angleNote,
     offerNote,

@@ -32,7 +32,6 @@ async function uniqueSlug(base: string, ignoreId?: string): Promise<string> {
   const root = slugify(base) || "cliente";
   let candidate = root;
   let n = 2;
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const query = supabaseAdmin().from("clients").select("id").eq("slug", candidate);
     const { data, error } = await query;

@@ -901,6 +901,47 @@ button.compact-action {
   word-break: break-word;
 }
 
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  justify-content: flex-end;
+}
+
+.mode-callout {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+  padding: var(--space-2);
+}
+
+.mode-callout.is-active {
+  background: var(--surface-blue);
+  border-color: rgba(0, 123, 255, 0.28);
+}
+
+.mode-callout strong,
+.mode-callout span {
+  display: block;
+}
+
+.mode-callout strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.mode-callout span {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
 .rationale {
   color: var(--text-soft);
   font-size: 14px;
@@ -1160,6 +1201,127 @@ button.compact-action {
   padding: 0 var(--space-2);
 }
 
+.media-insight {
+  color: var(--text-muted);
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  margin-top: 4px;
+}
+
+.feedback-box {
+  background: #f8fbff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-2) var(--space-1) var(--space-1);
+  padding: var(--space-2);
+}
+
+.feedback-box label {
+  color: var(--text);
+  display: grid;
+  font-size: 12px;
+  font-weight: 900;
+  gap: 6px;
+}
+
+.feedback-box textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.feedback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.danger-action {
+  border-color: rgba(174, 44, 44, 0.28);
+  color: #9e2727;
+}
+
+.reference-library {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+}
+
+.reference-library-head {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.reference-library h3 {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.reference-library p {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 4px 0 0;
+}
+
+.reference-grid {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fill, minmax(152px, 1fr));
+}
+
+.reference-card {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  display: grid;
+  gap: var(--space-1);
+  overflow: hidden;
+  padding: var(--space-1);
+}
+
+.reference-card img,
+.reference-placeholder {
+  aspect-ratio: 9 / 16;
+  background: var(--surface-blue);
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  width: 100%;
+}
+
+.reference-placeholder {
+  align-items: center;
+  color: var(--otg-blue-dark);
+  display: flex;
+  font-weight: 900;
+  justify-content: center;
+}
+
+.reference-card strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.reference-card span,
+.empty-reference,
+.rejected-memory li {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .audit-grid {
   display: grid;
   gap: var(--space-2);
@@ -1299,6 +1461,10 @@ button.compact-action {
   }
 
   .topbar-actions,
+  .inline-actions,
+  .feedback-actions,
+  .reference-library-head,
+  .mode-callout,
   .result-actions,
   .button-row {
     flex-direction: column;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClient } from "@/lib/data/clients";
 import { getAsset, insertAsset, listAssets } from "@/lib/data/assets";
+import { getClientLearningMemory } from "@/lib/data/feedback";
 import { updateFrameAiAsset } from "@/lib/data/packages";
 import { downloadFromStorage, uploadToStorage } from "@/lib/storage";
 import {
@@ -72,6 +73,12 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as Body;
     const client = await getClient(body.client_id);
     if (!client) return NextResponse.json({ detail: "Cliente não encontrado." }, { status: 404 });
+    const clientMemory = await getClientLearningMemory(client.id).catch(() => ({
+      approved: [],
+      rejected: [],
+      approval_patterns: [],
+      rejection_patterns: [],
+    }));
 
     let source = await getAsset(body.source_asset_id);
     if (!source || source.client_id !== client.id) {
@@ -183,6 +190,7 @@ export async function POST(req: NextRequest) {
       objective: body.objective,
       story_type: body.story_type,
       offer: body.offer,
+      clientMemory,
     });
 
     // Para Frango na Brazza, não confiamos em override manual antigo/contaminado:

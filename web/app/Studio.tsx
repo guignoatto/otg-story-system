@@ -9,6 +9,7 @@ import type {
   CampaignObjective,
   ClientProfile,
   Frame,
+  MediaInsight,
   OutputFormat,
   StoryPackage,
   StoryType,
@@ -38,6 +39,21 @@ type FrameGenerationError = {
 
 type LogoPolicy = "none" | "discreet" | "required" | "source_only";
 
+type ReferenceItem = {
+  asset: Asset;
+  feedback: {
+    status: "approved" | "rejected";
+    reason: string;
+    comment: string;
+    updated_at: string;
+  };
+};
+
+type ReferencesState = {
+  approved: ReferenceItem[];
+  rejected: ReferenceItem[];
+};
+
 const DEFAULT_BRIEF: Brief = {
   objective: "vendas",
   story_type: "promocao",
@@ -54,11 +70,18 @@ export function Studio({ clients }: Props) {
   const [brief, setBrief] = useState<Brief>(DEFAULT_BRIEF);
   const [media, setMedia] = useState<Asset[]>([]);
   const [logos, setLogos] = useState<Asset[]>([]);
+  const [mediaInsights, setMediaInsights] = useState<Record<string, MediaInsight>>({});
+  const [curatingMedia, setCuratingMedia] = useState(false);
   const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([]);
+  const [weeklyMode, setWeeklyMode] = useState(false);
   const [pkg, setPkg] = useState<StoryPackage | null>(null);
   const [aiByFrame, setAiByFrame] = useState<Record<string, Asset>>({});
   const [generatingFrame, setGeneratingFrame] = useState<Record<string, boolean>>({});
   const [frameErrors, setFrameErrors] = useState<Record<string, FrameGenerationError>>({});
+  const [feedbackByFrame, setFeedbackByFrame] = useState<Record<string, "approved" | "rejected">>({});
+  const [feedbackNotes, setFeedbackNotes] = useState<Record<string, string>>({});
+  const [feedbackBusy, setFeedbackBusy] = useState<Record<string, boolean>>({});
+  const [references, setReferences] = useState<ReferencesState>({ approved: [], rejected: [] });
   const [promptPreview, setPromptPreview] = useState<{
     frame: Frame;
     prompt: string;
@@ -82,16 +105,18 @@ export function Studio({ clients }: Props) {
     let active = true;
     (async () => {
       try {
-        const [mediaRes, logoRes, histRes, usageRes] = await Promise.all([
+        const [mediaRes, logoRes, histRes, usageRes, refsRes] = await Promise.all([
           fetch(`/api/clients/${clientId}/assets?role=media`),
           fetch(`/api/clients/${clientId}/assets?role=logo`),
           fetch(`/api/clients/${clientId}/packages`),
           fetch(`/api/clients/${clientId}/usage`),
+          fetch(`/api/clients/${clientId}/references`),
         ]);
         const mediaData = await mediaRes.json();
         const logoData = await logoRes.json();
         const histData = await histRes.json();
         const usageData = await usageRes.json();
+        const refsData = await refsRes.json();
         if (!active) return;
         const imageAssets = (mediaData.items ?? []).filter((a: Asset) => a.mime_type.startsWith("image/"));
         const imageMedia = imageAssets.filter(isGeneratableMediaAsset);
@@ -102,9 +127,16 @@ export function Studio({ clients }: Props) {
         setSelectedMediaIds(imageMedia.slice(0, Math.min(MAX_SELECTED_MEDIA, Math.max(DEFAULT_BRIEF.frames, 4))).map((a: Asset) => a.id));
         setHistory(histData.items ?? []);
         setUsage(usageData);
+        setReferences({
+          approved: Array.isArray(refsData.approved) ? refsData.approved : [],
+          rejected: Array.isArray(refsData.rejected) ? refsData.rejected : [],
+        });
+        setMediaInsights({});
         setPkg(null);
         setAiByFrame({});
         setFrameErrors({});
+        setFeedbackByFrame({});
+        setFeedbackNotes({});
       } catch {
         /* ignore */
       }
@@ -127,7 +159,48 @@ export function Studio({ clients }: Props) {
   }
 
   function selectSuggestedMedia() {
-    setSelectedMediaIds(media.slice(0, Math.min(MAX_SELECTED_MEDIA, Math.max(brief.frames, 4))).map((asset) => asset.id));
+    const scored = [...media].sort((a, b) => {
+      const insightA = mediaInsights[a.id];
+      const insightB = mediaInsights[b.id];
+      const objectiveA = insightA?.best_for.includes(brief.objective) ? 2 : 0;
+      const objectiveB = insightB?.best_for.includes(brief.objective) ? 2 : 0;
+      const avoidA = insightA?.avoid_for.some((flag) => ["ai_generation", "hero", brief.objective].includes(flag)) ? -4 : 0;
+      const avoidB = insightB?.avoid_for.some((flag) => ["ai_generation", "hero", brief.objective].includes(flag)) ? -4 : 0;
+      return ((insightB?.quality_score ?? 5) + objectiveB + avoidB) - ((insightA?.quality_score ?? 5) + objectiveA + avoidA);
+    });
+    setSelectedMediaIds(scored.slice(0, Math.min(MAX_SELECTED_MEDIA, Math.max(brief.frames, 4))).map((asset) => asset.id));
+  }
+
+  async function curateMedia() {
+    if (!client || !media.length) return;
+    setCuratingMedia(true);
+    setMessage("Curador de fotos analisando as mídias reais...");
+    try {
+      const res = await fetch(`/api/clients/${client.id}/media-curation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ asset_ids: media.slice(0, 12).map((asset) => asset.id) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || `Erro ${res.status}`);
+      const insights = Array.isArray(data.insights) ? (data.insights as MediaInsight[]) : [];
+      setMediaInsights(Object.fromEntries(insights.map((insight) => [insight.asset_id, insight])));
+      if (insights.length) {
+        const insightById = new Map(insights.map((insight) => [insight.asset_id, insight]));
+        const safe = media
+          .filter((asset) => {
+            const insight = insightById.get(asset.id);
+            return !insight?.avoid_for.some((flag) => ["ai_generation", "hero"].includes(flag));
+          })
+          .sort((a, b) => (insightById.get(b.id)?.quality_score ?? 0) - (insightById.get(a.id)?.quality_score ?? 0));
+        setSelectedMediaIds(safe.slice(0, Math.min(MAX_SELECTED_MEDIA, Math.max(brief.frames, 4))).map((asset) => asset.id));
+      }
+      setMessage(`Curador analisou ${insights.length} foto(s) e atualizou a seleção sugerida.`);
+    } catch (err) {
+      setMessage(`Erro no curador de fotos: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setCuratingMedia(false);
+    }
   }
 
   async function generate() {
@@ -150,6 +223,8 @@ export function Studio({ clients }: Props) {
           client_id: client.id,
           restaurant_name: client.name,
           ...brief,
+          frames: weeklyMode ? Math.max(7, brief.frames) : brief.frames,
+          weekly_batch: weeklyMode,
           media_asset_ids: selectedMediaIds,
         }),
       });
@@ -158,6 +233,8 @@ export function Studio({ clients }: Props) {
       setPkg(data as StoryPackage);
       setAiByFrame({});
       setFrameErrors({});
+      setFeedbackByFrame({});
+      setFeedbackNotes({});
       setMessage(data.rationale || "Pacote gerado.");
       void refreshHistory();
     } catch (err) {
@@ -175,6 +252,48 @@ export function Studio({ clients }: Props) {
     ]);
     setHistory((await histRes.json()).items ?? []);
     setUsage(await usageRes.json());
+  }
+
+  async function refreshReferences() {
+    if (!clientId) return;
+    const res = await fetch(`/api/clients/${clientId}/references`);
+    const data = await res.json();
+    if (!res.ok) return;
+    setReferences({
+      approved: Array.isArray(data.approved) ? data.approved : [],
+      rejected: Array.isArray(data.rejected) ? data.rejected : [],
+    });
+  }
+
+  async function submitFeedback(frame: Frame, status: "approved" | "rejected") {
+    if (!aiByFrame[frame.id]) {
+      setMessage("Gere a imagem com IA antes de aprovar ou reprovar.");
+      return;
+    }
+    const note = feedbackNotes[frame.id]?.trim();
+    const reason = note || (status === "approved"
+      ? "Boa referência visual para este cliente."
+      : "Reprovada pela OTG; evitar repetir este padrão.");
+
+    setFeedbackBusy((cur) => ({ ...cur, [frame.id]: true }));
+    try {
+      const res = await fetch(`/api/frames/${frame.id}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || `Erro ${res.status}`);
+      setFeedbackByFrame((cur) => ({ ...cur, [frame.id]: status }));
+      setMessage(status === "approved"
+        ? "Referência aprovada e salva na memória do cliente."
+        : "Reprovação salva. Os agentes vão evitar esse padrão nas próximas gerações.");
+      void refreshReferences();
+    } catch (err) {
+      setMessage(`Erro ao salvar feedback: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setFeedbackBusy((cur) => ({ ...cur, [frame.id]: false }));
+    }
   }
 
   function mediaFor(frame: Frame): Asset | undefined {
@@ -359,9 +478,14 @@ export function Studio({ clients }: Props) {
                   <span>Imagens da leva</span>
                   <small>Escolha até {MAX_SELECTED_MEDIA} fotos para reduzir o contexto da IA</small>
                 </div>
-                <button type="button" className="ghost compact-action" disabled={busy || !media.length} onClick={selectSuggestedMedia}>
-                  Sugerir
-                </button>
+                <div className="inline-actions">
+                  <button type="button" className="ghost compact-action" disabled={busy || curatingMedia || !media.length} onClick={() => void curateMedia()}>
+                    {curatingMedia ? "Curando..." : "Curar fotos"}
+                  </button>
+                  <button type="button" className="ghost compact-action" disabled={busy || !media.length} onClick={selectSuggestedMedia}>
+                    Sugerir
+                  </button>
+                </div>
               </div>
 
               {media.length ? (
@@ -369,6 +493,7 @@ export function Studio({ clients }: Props) {
                   {media.map((asset) => {
                     const checked = selectedMediaIds.includes(asset.id);
                     const disabled = busy || (!checked && selectedMediaIds.length >= MAX_SELECTED_MEDIA);
+                    const insight = mediaInsights[asset.id];
                     return (
                       <label key={asset.id} className={`media-option${checked ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`}>
                         <input
@@ -384,6 +509,12 @@ export function Studio({ clients }: Props) {
                           {!asset.public_url && "IMG"}
                         </span>
                         <span className="media-option-name">{asset.file_name}</span>
+                        {insight && (
+                          <span className="media-insight">
+                            Nota {Math.round(insight.quality_score)}/10
+                            {insight.avoid_for.length ? ` · evitar: ${insight.avoid_for.slice(0, 2).join(", ")}` : ""}
+                          </span>
+                        )}
                       </label>
                     );
                   })}
@@ -401,6 +532,23 @@ export function Studio({ clients }: Props) {
                   <span>Campanha</span>
                   <small>O que os stories precisam causar</small>
                 </div>
+              </div>
+              <div className={`mode-callout${weeklyMode ? " is-active" : ""}`}>
+                <div>
+                  <strong>Lote semanal</strong>
+                  <span>Gera uma sequência maior e mais variada para abastecer a semana.</span>
+                </div>
+                <button
+                  type="button"
+                  className={weeklyMode ? "approve compact-action" : "ghost compact-action"}
+                  disabled={busy}
+                  onClick={() => {
+                    setWeeklyMode((cur) => !cur);
+                    setBrief((prev) => ({ ...prev, frames: weeklyMode ? Math.min(prev.frames, 4) : Math.max(prev.frames, 7) }));
+                  }}
+                >
+                  {weeklyMode ? "Ativo" : "Ativar"}
+                </button>
               </div>
               <div className="two-columns">
                 <label className="field-control">
@@ -509,6 +657,8 @@ export function Studio({ clients }: Props) {
                         <h4>Frame {frame.idx}</h4>
                         {frameError && <span className="status-pill warning">Reprovada</span>}
                         {aiByFrame[frame.id] && <span className="status-pill">IA</span>}
+                        {feedbackByFrame[frame.id] === "approved" && <span className="status-pill">Aprovada</span>}
+                        {feedbackByFrame[frame.id] === "rejected" && <span className="status-pill warning">Feedback salvo</span>}
                       </div>
                       <div
                         className={`creative-preview ${frame.layout_style}`}
@@ -593,12 +743,93 @@ export function Studio({ clients }: Props) {
                           </button>
                         )}
                       </div>
+                      {aiByFrame[frame.id] && (
+                        <div className="feedback-box">
+                          <label>
+                            Observação para a memória deste cliente
+                            <textarea
+                              value={feedbackNotes[frame.id] ?? ""}
+                              disabled={!!feedbackBusy[frame.id]}
+                              placeholder="Ex: ficou premium demais, CTA parece anúncio, composição boa para repetir..."
+                              onChange={(e) => setFeedbackNotes((cur) => ({ ...cur, [frame.id]: e.target.value }))}
+                            />
+                          </label>
+                          <div className="feedback-actions">
+                            <button
+                              type="button"
+                              className="approve"
+                              disabled={!!feedbackBusy[frame.id]}
+                              onClick={() => void submitFeedback(frame, "approved")}
+                            >
+                              Aprovar referência
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost danger-action"
+                              disabled={!!feedbackBusy[frame.id]}
+                              onClick={() => void submitFeedback(frame, "rejected")}
+                            >
+                              Reprovar
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             </>
           )}
+
+          <section className="reference-library">
+            <div className="reference-library-head">
+              <div>
+                <h3>Biblioteca de referências</h3>
+                <p>Artes aprovadas viram referência visual. Reprovações viram padrões que os agentes evitam.</p>
+              </div>
+              <button
+                type="button"
+                className="ghost compact-action"
+                disabled={!clientId || !references.approved.length}
+                onClick={() => window.open(`/api/clients/${clientId}/approved-zip`, "_blank")}
+              >
+                Baixar ZIP
+              </button>
+            </div>
+
+            {references.approved.length ? (
+              <div className="reference-grid">
+                {references.approved.slice(0, 6).map(({ asset, feedback }) => (
+                  <article key={asset.id} className="reference-card">
+                    {asset.public_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={asset.public_url} alt={asset.file_name} />
+                    ) : (
+                      <div className="reference-placeholder">IA</div>
+                    )}
+                    <strong>{feedback.reason}</strong>
+                    {feedback.comment && <span>{feedback.comment}</span>}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-reference">Nenhuma arte aprovada ainda. Aprove uma imagem gerada para alimentar a memória.</div>
+            )}
+
+            {references.rejected.length > 0 && (
+              <details className="technical-details rejected-memory">
+                <summary>Padrões reprovados ({references.rejected.length})</summary>
+                <ul>
+                  {references.rejected.slice(0, 8).map(({ asset, feedback }) => (
+                    <li key={asset.id}>
+                      <strong>{feedback.reason}</strong>
+                      {feedback.comment ? ` · ${feedback.comment}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </section>
 
           {history.length > 0 && (
             <details className="technical-details" style={{ marginTop: "var(--space-3)" }}>

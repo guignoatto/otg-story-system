@@ -120,6 +120,7 @@ export type GenerationBrief = {
   offer: string;
   cta: string;
   media_asset_ids?: string[];
+  weekly_batch?: boolean;
 };
 
 export type DriveStatusResponse = {

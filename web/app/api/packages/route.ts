@@ -24,7 +24,9 @@ export async function POST(req: NextRequest) {
     const client = await getClient(brief.client_id);
     if (!client) return NextResponse.json({ detail: "Cliente não encontrado." }, { status: 404 });
 
-    const frameCount = Math.max(3, Math.min(brief.frames || 4, 10));
+    const frameCount = brief.weekly_batch
+      ? Math.max(7, Math.min(brief.frames || 7, 10))
+      : Math.max(3, Math.min(brief.frames || 4, 10));
     let allMedia = (await listAssets(client.id, "media")).filter(isGeneratableMediaAsset);
     const autoImportNotes: string[] = [];
     if (!allMedia.length && client.media_source_url) {
