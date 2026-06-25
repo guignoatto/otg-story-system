@@ -9,7 +9,6 @@ import type {
   CampaignObjective,
   ClientProfile,
   Frame,
-  MediaInsight,
   OutputFormat,
   StoryPackage,
   StoryType,
@@ -89,108 +88,6 @@ function titleCase(value: string): string {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 }
 
-function mediaKind(asset: Asset, insight?: MediaInsight): string {
-  const text = [
-    asset.file_name,
-    asset.notes ?? "",
-    asset.extracted_text_preview ?? "",
-    insight?.visual_description ?? "",
-    insight?.mood ?? "",
-    (insight?.avoid_for ?? []).join(" "),
-    (insight?.best_for ?? []).join(" "),
-  ].join(" ").toLowerCase();
-
-  const hasMainDish = /\b(prato|refei[cç][aã]o|marmita|marmitex|pf|frango|galeto|carne|picanha|churrasco|costela|pizza|massa|lasanha|hamb[uú]rguer|sandu[ií]che|combo)\b/i.test(text);
-  const hasSauceOnlyCue = /\b(molho|molhos|sauce|condimento|maionese|ketchup|barbecue|creme|dip|molheira|pote de molho|cumbuca de molho)\b/i.test(text);
-
-  const rules: Array<[RegExp, string]> = [
-    [/\b(pizza|pizzaria|queijo|calabresa|mussarela|pepperoni)\b/i, "pizza"],
-    [/\b(frango|galeto|coxa|sobrecoxa|asa|marmitex)\b/i, "frango"],
-    [/\b(carne|picanha|churrasco|costela|bife|entrecot|grelhado|brasa)\b/i, "carne"],
-    [/\b(massa|macarr[aã]o|lasanha|ravioli|nhoque|spaghetti|talharim)\b/i, "massas"],
-    [/\b(sobremesa|doce|torta|pudim|chocolate|sorvete)\b/i, "sobremesas"],
-    [/\b(ambiente|sal[aã]o|mesa posta|fachada|equipe|pessoa|cliente|cozinha)\b/i, "ambiente"],
-    [/\b(delivery|embalagem|caixa|sacola|pedido|takeaway)\b/i, "delivery"],
-    [/\b(salada|arroz|feij[aã]o|batata|farofa|acompanhamento|guarni[cç][aã]o)\b/i, "acompanhamentos"],
-    [/\b(refrigerante|bebida|lata|coca|sprite|fanta|cerveja|chopp|suco|drink)\b/i, "bebidas"],
-  ];
-
-  if (hasSauceOnlyCue && !hasMainDish) return "molhos";
-  return rules.find(([pattern]) => pattern.test(text))?.[1] ?? "prato principal";
-}
-
-function mediaScore(asset: Asset, insight: MediaInsight | undefined, objective: CampaignObjective): number {
-  const kind = mediaKind(asset, insight);
-  const avoid = insight?.avoid_for ?? [];
-  const bestFor = insight?.best_for ?? [];
-  let score = insight?.quality_score ?? 5;
-  if (bestFor.includes(objective)) score += 2;
-  if (bestFor.includes("vendas")) score += 0.5;
-  if (avoid.some((flag) => ["ai_generation", "hero", objective].includes(flag))) score -= 5;
-  if (avoid.some((flag) => ["secondary_subject", "repetitive_sauce"].includes(flag))) score -= 2.5;
-  if (kind === "molhos") score -= 3;
-  if (kind === "acompanhamentos") score -= 1.5;
-  if (kind === "prato principal") score += 1.5;
-  return score;
-}
-
-function selectDiverseMedia(
-  assets: Asset[],
-  insightsById: Record<string, MediaInsight>,
-  objective: CampaignObjective,
-  target: number
-): Asset[] {
-  const scored = assets
-    .map((asset) => ({
-      asset,
-      kind: mediaKind(asset, insightsById[asset.id]),
-      score: mediaScore(asset, insightsById[asset.id], objective),
-    }))
-    .sort((a, b) => b.score - a.score);
-
-  const buckets = new Map<string, typeof scored>();
-  for (const item of scored) {
-    const bucket = buckets.get(item.kind) ?? [];
-    bucket.push(item);
-    buckets.set(item.kind, bucket);
-  }
-
-  const selected: typeof scored = [];
-  const countByKind = new Map<string, number>();
-  const maxByKind = (kind: string): number => {
-    if (kind === "molhos") return target >= 18 ? 2 : 1;
-    if (kind === "acompanhamentos" || kind === "bebidas") return 2;
-    if (kind === "ambiente") return target >= 12 ? 3 : 2;
-    return Math.max(3, Math.ceil(target / 4));
-  };
-
-  const bucketOrder = [...buckets.entries()]
-    .sort(([, a], [, b]) => (b[0]?.score ?? 0) - (a[0]?.score ?? 0))
-    .map(([kind]) => kind);
-
-  let changed = true;
-  while (selected.length < target && changed) {
-    changed = false;
-    for (const kind of bucketOrder) {
-      const used = countByKind.get(kind) ?? 0;
-      if (used >= maxByKind(kind)) continue;
-      const next = buckets.get(kind)?.shift();
-      if (!next) continue;
-      selected.push(next);
-      countByKind.set(kind, used + 1);
-      changed = true;
-      if (selected.length >= target) break;
-    }
-  }
-
-  if (selected.length < target) {
-    const selectedIds = new Set(selected.map((item) => item.asset.id));
-    selected.push(...scored.filter((item) => !selectedIds.has(item.asset.id)).slice(0, target - selected.length));
-  }
-
-  return selected.slice(0, target).map((item) => item.asset);
-}
-
 function mediaSelectionTarget(brief: Brief, weeklyMode: boolean): number {
   const target = weeklyMode ? WEEKLY_STORY_COUNT : Math.max(brief.frames, 8);
   return Math.min(MAX_SELECTED_MEDIA, target);
@@ -202,8 +99,6 @@ export function Studio({ clients }: Props) {
   const [manualBrief, setManualBrief] = useState<Brief>(DEFAULT_BRIEF);
   const [media, setMedia] = useState<Asset[]>([]);
   const [logos, setLogos] = useState<Asset[]>([]);
-  const [mediaInsights, setMediaInsights] = useState<Record<string, MediaInsight>>({});
-  const [curatingMedia, setCuratingMedia] = useState(false);
   const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([]);
   const [weeklyMode, setWeeklyMode] = useState(false);
   const [pkg, setPkg] = useState<StoryPackage | null>(null);
@@ -268,7 +163,6 @@ export function Studio({ clients }: Props) {
           approved: Array.isArray(refsData.approved) ? refsData.approved : [],
           rejected: Array.isArray(refsData.rejected) ? refsData.rejected : [],
         });
-        setMediaInsights({});
         setPkg(null);
         setAiByFrame({});
         setFrameErrors({});
@@ -301,13 +195,6 @@ export function Studio({ clients }: Props) {
     });
   }
 
-  function selectSuggestedMedia() {
-    const target = mediaSelectionTarget(brief, weeklyMode);
-    const suggested = selectDiverseMedia(media, mediaInsights, brief.objective, target);
-    setSelectedMediaIds(suggested.map((asset) => asset.id));
-    setMessage(`Sugeri ${suggested.length} foto(s) com variedade de assuntos para esta leva.`);
-  }
-
   function toggleWeeklyMode() {
     if (weeklyMode) {
       setWeeklyMode(false);
@@ -319,54 +206,7 @@ export function Studio({ clients }: Props) {
     setManualBrief(brief);
     setWeeklyMode(true);
     setBrief(WEEKLY_AUTOPILOT_BRIEF);
-    if (media.length) {
-      const suggested = selectDiverseMedia(
-        media,
-        mediaInsights,
-        WEEKLY_AUTOPILOT_BRIEF.objective,
-        mediaSelectionTarget(WEEKLY_AUTOPILOT_BRIEF, true)
-      );
-      setSelectedMediaIds(suggested.map((asset) => asset.id));
-    }
-    setMessage("Lote semanal no piloto automático: objetivo, formato, tipo, tema e chamadas serão decididos pelos agentes.");
-  }
-
-  async function curateMedia() {
-    if (!client || !media.length) return;
-    const scope = selectedMediaIds.length
-      ? media.filter((asset) => selectedMediaIds.includes(asset.id))
-      : media;
-    if (!scope.length) return;
-    setCuratingMedia(true);
-    setMessage(`Curador analisando ${scope.length} foto(s) ${selectedMediaIds.length ? "selecionada(s)" : "da biblioteca"}...`);
-    try {
-      const res = await fetch(`/api/clients/${client.id}/media-curation`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ asset_ids: scope.map((asset) => asset.id) }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || `Erro ${res.status}`);
-      const insights = Array.isArray(data.insights) ? (data.insights as MediaInsight[]) : [];
-      const nextInsights = {
-        ...mediaInsights,
-        ...Object.fromEntries(insights.map((insight) => [insight.asset_id, insight])),
-      };
-      setMediaInsights(nextInsights);
-      if (insights.length) {
-        const target = Math.min(scope.length, mediaSelectionTarget(brief, weeklyMode));
-        const curated = selectDiverseMedia(scope, nextInsights, brief.objective, target);
-        setSelectedMediaIds(curated.map((asset) => asset.id));
-      }
-      const analyzedCount = typeof data.analyzed_count === "number" ? data.analyzed_count : insights.length;
-      setMessage(
-        `Curador analisou ${analyzedCount} foto(s) e atualizou a seleção com variedade. Molhos, bebidas e acompanhamentos entram só como apoio.`
-      );
-    } catch (err) {
-      setMessage(`Erro no curador de fotos: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setCuratingMedia(false);
-    }
+    setMessage("Lote semanal no piloto automático: objetivo, formato, tipo, tema e chamadas serão decididos pelos agentes. Selecione as fotos manualmente por enquanto.");
   }
 
   async function generate() {
@@ -668,15 +508,7 @@ export function Studio({ clients }: Props) {
               <div className="card-title">
                 <div>
                   <span>Imagens da leva</span>
-                  <small>Escolha até {MAX_SELECTED_MEDIA} fotos. O curador equilibra pratos, ambiente, delivery e apoios.</small>
-                </div>
-                <div className="inline-actions">
-                  <button type="button" className="ghost compact-action" disabled={busy || curatingMedia || !media.length} onClick={() => void curateMedia()}>
-                    {curatingMedia ? "Curando..." : selectedMediaIds.length ? "Curar seleção" : "Curar biblioteca"}
-                  </button>
-                  <button type="button" className="ghost compact-action" disabled={busy || !media.length} onClick={selectSuggestedMedia}>
-                    Sugerir variedade
-                  </button>
+                  <small>Escolha manualmente até {MAX_SELECTED_MEDIA} fotos para orientar os agentes.</small>
                 </div>
               </div>
 
@@ -685,7 +517,6 @@ export function Studio({ clients }: Props) {
                   {media.map((asset) => {
                     const checked = selectedMediaIds.includes(asset.id);
                     const disabled = busy || (!checked && selectedMediaIds.length >= MAX_SELECTED_MEDIA);
-                    const insight = mediaInsights[asset.id];
                     return (
                       <label key={asset.id} className={`media-option${checked ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`}>
                         <input
@@ -701,13 +532,6 @@ export function Studio({ clients }: Props) {
                           {!asset.public_url && "IMG"}
                         </span>
                         <span className="media-option-name">{asset.file_name}</span>
-                        {insight && (
-                          <span className="media-insight">
-                            Nota {Math.round(insight.quality_score)}/10
-                            {` · ${mediaKind(asset, insight)}`}
-                            {(insight.avoid_for ?? []).length ? ` · evitar: ${(insight.avoid_for ?? []).slice(0, 2).join(", ")}` : ""}
-                          </span>
-                        )}
                       </label>
                     );
                   })}
