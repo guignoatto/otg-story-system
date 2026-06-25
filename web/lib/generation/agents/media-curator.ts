@@ -44,7 +44,9 @@ const INSIGHT_SCHEMA = {
   required: ["insights"],
 } as const;
 
-export async function runMediaCurator(assets: Asset[]): Promise<MediaInsight[]> {
+const CURATOR_BATCH_SIZE = 8;
+
+async function runMediaCuratorBatch(assets: Asset[]): Promise<MediaInsight[]> {
   const withUrl = assets.filter((a) => a.public_url);
   if (!withUrl.length) return [];
 
@@ -91,9 +93,11 @@ export async function runMediaCurator(assets: Asset[]): Promise<MediaInsight[]> 
           "Ter lata/refrigerante pequeno ou secundário na foto não é problema; descreva apenas como elemento secundário da cena.",
           "Quando uma marca de terceiro ou lata dominar a cena, quality_score deve ser no máximo 3 e avoid_for deve incluir ai_generation e hero, pois ela não deve virar foco do criativo.",
           "Só inclua hero em avoid_for quando a lata/marca realmente competir com a comida ou parecer protagonista.",
+          "Fotos só de molho, pote de molho, condimento, acompanhamento isolado ou detalhe secundário podem ser úteis, mas não devem dominar uma seleção de stories. Se a foto não tiver prato/produto principal claro, quality_score deve ser no máximo 5 e avoid_for deve incluir secondary_subject.",
+          "Se houver várias fotos parecidas do mesmo item (ex.: vários molhos), sinalize isso na descrição como 'variação de molho' ou 'assunto secundário', para o sistema diversificar a seleção.",
           "Seja conciso e objetivo. Responda apenas em português do Brasil.",
           "best_for usa objetivos: vendas, reservas, engajamento, awareness, alcance_local, relacionamento.",
-          "avoid_for pode usar esses objetivos e também flags operacionais: ai_generation, hero, frango_na_brazza, logo_recreation, readable_background_text.",
+          "avoid_for pode usar esses objetivos e também flags operacionais: ai_generation, hero, frango_na_brazza, logo_recreation, readable_background_text, secondary_subject, repetitive_sauce.",
         ].join("\n"),
       },
       { role: "user", content: userContent },
@@ -112,4 +116,20 @@ export async function runMediaCurator(assets: Asset[]): Promise<MediaInsight[]> 
   // prompt do gerador com fotos que não existem.
   const validNames = new Set(withUrl.map((a) => a.file_name));
   return parsed.insights.filter((i) => validNames.has(i.file_name));
+}
+
+export async function runMediaCurator(assets: Asset[]): Promise<MediaInsight[]> {
+  const withUrl = assets.filter((a) => a.public_url);
+  if (withUrl.length <= CURATOR_BATCH_SIZE) return runMediaCuratorBatch(withUrl);
+
+  const batches: Asset[][] = [];
+  for (let index = 0; index < withUrl.length; index += CURATOR_BATCH_SIZE) {
+    batches.push(withUrl.slice(index, index + CURATOR_BATCH_SIZE));
+  }
+
+  const insights: MediaInsight[] = [];
+  for (const batch of batches) {
+    insights.push(...await runMediaCuratorBatch(batch));
+  }
+  return insights;
 }

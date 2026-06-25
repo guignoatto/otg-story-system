@@ -9,7 +9,7 @@ import { isGeneratableMediaAsset } from "@/lib/asset-classification";
 import type { GenerationBrief } from "@/lib/types";
 
 export const maxDuration = 300;
-const MAX_SELECTED_MEDIA = 10;
+const MAX_SELECTED_MEDIA = 24;
 const WEEKLY_FRAME_COUNT = 21;
 
 function estimateCostBrl(frames: number): number {

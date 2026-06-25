@@ -10,7 +10,8 @@ type Body = {
   asset_ids?: string[];
 };
 
-export const maxDuration = 120;
+export const maxDuration = 300;
+const MAX_CURATION_MEDIA = 60;
 
 export async function POST(req: NextRequest, { params }: Ctx) {
   try {
@@ -23,10 +24,11 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     const allMedia = (await listAssets(client.id, "media")).filter(isGeneratableMediaAsset);
     const media = requested.size
       ? allMedia.filter((asset) => requested.has(asset.id))
-      : allMedia.slice(0, 12);
+      : allMedia.slice(0, MAX_CURATION_MEDIA);
 
-    const insights = await runMediaCurator(media.slice(0, 12));
-    return NextResponse.json({ insights });
+    const mediaToAnalyze = media.slice(0, MAX_CURATION_MEDIA);
+    const insights = await runMediaCurator(mediaToAnalyze);
+    return NextResponse.json({ insights, analyzed_count: mediaToAnalyze.length, received_count: media.length });
   } catch (err) {
     return NextResponse.json(
       { detail: err instanceof Error ? err.message : String(err) },
