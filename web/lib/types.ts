@@ -121,6 +121,7 @@ export type GenerationBrief = {
   cta: string;
   media_asset_ids?: string[];
   weekly_batch?: boolean;
+  defer_media_selection?: boolean;
 };
 
 export type DriveStatusResponse = {
@@ -157,6 +158,13 @@ export type MediaInsight = {
   quality_score: number;
   best_for: string[];
   avoid_for: string[];
+};
+
+export type MediaAssignment = {
+  frame_index: number;
+  asset_id: string | null;
+  file_name: string | null;
+  rationale: string;
 };
 
 export type BrandContext = {

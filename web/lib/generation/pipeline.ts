@@ -2,6 +2,7 @@ import "server-only";
 import { runMediaCurator } from "./agents/media-curator";
 import { runBrandGuard, fallbackBrandContext } from "./agents/brand-guard";
 import { runQA } from "./agents/qa";
+import { selectMediaForFrames } from "./agents/media-selector";
 import { generateFrames } from "./frames";
 import { getClientLearningMemory } from "../data/feedback";
 import type { Asset, ClientProfile, GenerationBrief } from "../types";
@@ -51,6 +52,7 @@ export async function generatePackage(params: {
     mediaInsights,
     brandContext,
     clientMemory,
+    deferMediaSelection: brief.defer_media_selection || brief.weekly_batch,
   });
 
   // Fase 3: QA independente (opcional — em falha, publica os frames originais)
@@ -70,6 +72,33 @@ export async function generatePackage(params: {
   } catch (err) {
     console.error("QA falhou; frames publicados sem revisão automática.", err);
     qaNotes = "QA indisponível nesta geração; frames publicados sem revisão automática.";
+  }
+
+  if ((brief.defer_media_selection || brief.weekly_batch) && media.length) {
+    try {
+      const assignments = await selectMediaForFrames({ frames, media, mediaInsights });
+      const assignmentByFrame = new Map(assignments.map((assignment) => [assignment.frame_index, assignment]));
+      frames = frames.map((frame) => {
+        const assignment = assignmentByFrame.get(frame.index);
+        return assignment ? { ...frame, media_filename: assignment.file_name } : frame;
+      });
+      const selectionNotes = assignments
+        .slice(0, 6)
+        .map((assignment) => `#${assignment.frame_index}: ${assignment.file_name ?? "sem mídia"} - ${assignment.rationale}`)
+        .join("\n");
+      qaNotes = [qaNotes, `Seleção de mídia pós-pauta aplicada.\n${selectionNotes}`]
+        .filter(Boolean)
+        .join("\n\n");
+    } catch (err) {
+      console.error("MediaSelector falhou; usando fallback por ordem.", err);
+      frames = frames.map((frame, index) => ({
+        ...frame,
+        media_filename: media[index % media.length]?.file_name ?? frame.media_filename,
+      }));
+      qaNotes = [qaNotes, "MediaSelector indisponível; mídias distribuídas em rodízio como fallback."]
+        .filter(Boolean)
+        .join("\n\n");
+    }
   }
 
   return {

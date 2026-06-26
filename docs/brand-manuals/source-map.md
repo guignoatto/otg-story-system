@@ -55,3 +55,9 @@ Estas fontes foram usadas apenas para criar manuais v1. Quando o cliente enviar 
 - Instagram publico: https://www.instagram.com/galeteriabellamamma/
 - Informacoes usadas: galeteria tradicional de Porto Alegre, mais de 35 anos, rodizio, pegue-leve e delivery.
 - Nivel: medio.
+
+## Eleve
+
+- Instagram oficial informado pela OTG: https://www.instagram.com/eleveoficialbr/
+- Informacoes usadas: bio publica com "ELEVE | Comida de Verdade", "Marmitas congeladas artesanais", "Prontas em minutos", "Canoas/RS - entregas sob consulta"; destaques publicos Bastidores, Cardapio e Entregas; posts publicos com assinatura "comida de verdade para os dias corridos".
+- Nivel: medio. O perfil correto foi confirmado pela OTG, mas cardapio, dias de entrega, area de entrega, taxa, prazo e logo oficial em alta ainda devem ser validados antes de criativos comerciais.

@@ -10,6 +10,7 @@ import type { GenerationBrief } from "@/lib/types";
 
 export const maxDuration = 300;
 const MAX_SELECTED_MEDIA = 24;
+const MAX_WEEKLY_MEDIA_LIBRARY = 48;
 const WEEKLY_FRAME_COUNT = 21;
 
 function estimateCostBrl(frames: number): number {
@@ -46,10 +47,11 @@ export async function POST(req: NextRequest) {
     const autoImportNotes: string[] = [];
     if (!allMedia.length && client.media_source_url) {
       try {
-        const catalog = await driveCatalog(client.media_source_url, MAX_SELECTED_MEDIA);
+        const importLimit = brief.weekly_batch ? MAX_WEEKLY_MEDIA_LIBRARY : MAX_SELECTED_MEDIA;
+        const catalog = await driveCatalog(client.media_source_url, importLimit);
         const imageFileIds = catalog
           .filter((item) => item.mime_type.startsWith("image/"))
-          .slice(0, MAX_SELECTED_MEDIA)
+          .slice(0, importLimit)
           .map((item) => item.drive_file_id);
         if (imageFileIds.length) {
           const imported = await importDriveFiles(client, imageFileIds);
@@ -66,10 +68,12 @@ export async function POST(req: NextRequest) {
       ? brief.media_asset_ids.slice(0, MAX_SELECTED_MEDIA)
       : [];
     const selectedIdSet = new Set(selectedIds);
-    let media = selectedIds.length
-      ? allMedia.filter((asset) => selectedIdSet.has(asset.id))
-      : allMedia.slice(0, MAX_SELECTED_MEDIA);
-    if (selectedIds.length && !media.length && allMedia.length) {
+    let media = brief.weekly_batch
+      ? allMedia.slice(0, MAX_WEEKLY_MEDIA_LIBRARY)
+      : selectedIds.length
+        ? allMedia.filter((asset) => selectedIdSet.has(asset.id))
+        : allMedia.slice(0, MAX_SELECTED_MEDIA);
+    if (!brief.weekly_batch && selectedIds.length && !media.length && allMedia.length) {
       media = allMedia.slice(0, MAX_SELECTED_MEDIA);
     }
 
@@ -95,6 +99,7 @@ export async function POST(req: NextRequest) {
       client_id: client.id,
       frames: frameCount,
       media_asset_ids: media.map((asset) => asset.id),
+      defer_media_selection: Boolean(brief.weekly_batch),
     };
 
     const result = await generatePackage({

@@ -206,7 +206,8 @@ export function Studio({ clients }: Props) {
     setManualBrief(brief);
     setWeeklyMode(true);
     setBrief(WEEKLY_AUTOPILOT_BRIEF);
-    setMessage("Lote semanal no piloto automático: objetivo, formato, tipo, tema e chamadas serão decididos pelos agentes. Selecione as fotos manualmente por enquanto.");
+    setSelectedMediaIds([]);
+    setMessage("Lote semanal no piloto automático: os agentes decidem a pauta primeiro e depois escolhem as melhores fotos do banco.");
   }
 
   async function generate() {
@@ -216,7 +217,7 @@ export function Studio({ clients }: Props) {
       setMessage("Preencha tema/produto e a chamada orgânica.");
       return;
     }
-    if (!selectedMediaIds.length) {
+    if (!weeklyMode && !selectedMediaIds.length) {
       setMessage("Selecione pelo menos uma imagem para gerar essa leva de stories.");
       return;
     }
@@ -232,7 +233,7 @@ export function Studio({ clients }: Props) {
           ...activeBrief,
           frames: weeklyMode ? WEEKLY_STORY_COUNT : activeBrief.frames,
           weekly_batch: weeklyMode,
-          media_asset_ids: selectedMediaIds,
+          media_asset_ids: weeklyMode ? [] : selectedMediaIds,
         }),
       });
       const data = await res.json();
@@ -498,7 +499,9 @@ export function Studio({ clients }: Props) {
                 </select>
               </label>
             <div className="upload-status">
-                {selectedMedia.length} de {media.length} foto(s) gerável(is) selecionada(s) ·{" "}
+                {weeklyMode
+                  ? `${media.length} foto(s) gerável(is) no banco para seleção automática`
+                  : `${selectedMedia.length} de ${media.length} foto(s) gerável(is) selecionada(s)`} ·{" "}
                 {logos.length} logo(s) ·{" "}
                 {client && <Link href={`/clientes/${client.id}`}>gerenciar cliente</Link>}
               </div>
@@ -508,7 +511,11 @@ export function Studio({ clients }: Props) {
               <div className="card-title">
                 <div>
                   <span>Imagens da leva</span>
-                  <small>Escolha manualmente até {MAX_SELECTED_MEDIA} fotos para orientar os agentes.</small>
+                  <small>
+                    {weeklyMode
+                      ? "No lote semanal, os agentes escolhem as fotos depois de criar a pauta."
+                      : `Escolha manualmente até ${MAX_SELECTED_MEDIA} fotos para orientar os agentes.`}
+                  </small>
                 </div>
               </div>
 
@@ -516,7 +523,7 @@ export function Studio({ clients }: Props) {
                 <div className="media-picker">
                   {media.map((asset) => {
                     const checked = selectedMediaIds.includes(asset.id);
-                    const disabled = busy || (!checked && selectedMediaIds.length >= MAX_SELECTED_MEDIA);
+                    const disabled = busy || weeklyMode || (!checked && selectedMediaIds.length >= MAX_SELECTED_MEDIA);
                     return (
                       <label key={asset.id} className={`media-option${checked ? " is-selected" : ""}${disabled ? " is-disabled" : ""}`}>
                         <input
@@ -632,7 +639,7 @@ export function Studio({ clients }: Props) {
               </label>
             </article>
 
-            <button type="button" className="primary-action" disabled={busy || !client || !selectedMediaIds.length} onClick={() => void generate()}>
+            <button type="button" className="primary-action" disabled={busy || !client || (!weeklyMode && !selectedMediaIds.length)} onClick={() => void generate()}>
               {busy ? "Produzindo..." : weeklyMode ? "Gerar semana com 21 stories" : "Gerar pacote de stories"}
             </button>
           </div>

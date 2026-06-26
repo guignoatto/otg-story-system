@@ -176,8 +176,9 @@ function buildUserPrompt(params: {
   mediaInsights?: MediaInsight[];
   brandContext?: BrandContext;
   clientMemory?: ClientLearningMemory;
+  deferMediaSelection?: boolean;
 }): string {
-  const { client, brief, media, mediaInsights, brandContext, clientMemory } = params;
+  const { client, brief, media, mediaInsights, brandContext, clientMemory, deferMediaSelection } = params;
   const rules = splitLines(client.notes);
   const pillars = PILLARS[brief.objective] || ["Gancho", "Autoridade", "Interacao", "Lembrete"];
   const isFrango = brandContext ? isFrangoBrandContext(brandContext) : false;
@@ -195,16 +196,23 @@ function buildUserPrompt(params: {
     ? [
         "PLANEJAMENTO SEMANAL OTG:",
         "- Modo piloto automático: objetivo, tipo, tema/produto e chamada do briefing são diretrizes de automação, não pauta fixa.",
-        "- Você deve decidir autonomamente o objetivo editorial de cada dia e de cada story, respeitando fotos disponíveis, manual, operação e memória de aprovações/reprovações.",
+        deferMediaSelection
+          ? "- Você deve decidir autonomamente a pauta editorial antes da escolha das fotos. Um agente separado selecionará as mídias depois com base nas suas ideias."
+          : "- Você deve decidir autonomamente o objetivo editorial de cada dia e de cada story, respeitando fotos disponíveis, manual, operação e memória de aprovações/reprovações.",
         "- A OTG posta 3 stories por dia para cada cliente. Este pacote deve ter 21 stories: 7 dias x 3 stories.",
         "- Gere exatamente 21 frames, nesta ordem: segunda 1/3, segunda 2/3, segunda 3/3, terça 1/3... até domingo 3/3.",
         "- Cada dia precisa ter mini-narrativa própria: abrir com gancho/contexto, desenvolver com desejo/prova/bastidor/cardápio, fechar com chamada orgânica.",
         "- Varie as propostas editoriais ao longo da semana. Não faça 21 variações do mesmo texto.",
         "- Varie também as chamadas orgânicas. Não repita o mesmo CTA em sequência e nunca use WhatsApp, salvar, guardar, enquete, botão falso ou linguagem de anúncio.",
-        "- Use a inteligência do sistema para decidir o mix ideal, combinando objetivo, fotos disponíveis, memória de aprovações, operação do restaurante e tipo de cliente.",
+        deferMediaSelection
+          ? "- Use a inteligência do sistema para decidir o mix ideal combinando manual, operação, memória de aprovações, rotina do cliente e variedade editorial. Não force a pauta a uma foto específica."
+          : "- Use a inteligência do sistema para decidir o mix ideal, combinando objetivo, fotos disponíveis, memória de aprovações, operação do restaurante e tipo de cliente.",
         `- Pilares disponíveis para variar: ${WEEKLY_PILLARS.join(", ")}.`,
         "- Não precisa usar todos os pilares, mas evite repetir o mesmo pilar em frames consecutivos.",
         "- Campos obrigatórios no modo semanal: weekly_day, daily_slot, content_pillar e content_goal.",
+        deferMediaSelection
+          ? "- Como a seleção de mídia será feita depois, media_filename deve ser null em todos os frames."
+          : "",
         "- daily_slot deve ser 1, 2 ou 3. weekly_day deve seguir a sequência: " + WEEKLY_DAYS.join(", ") + ".",
         "- Função dos slots: " + WEEKLY_SLOTS.join(" | "),
       ].join("\n")
@@ -212,7 +220,7 @@ function buildUserPrompt(params: {
 
   // Build enriched media list: se há insights de visão, usa a descrição; senão, só o nome.
   const insightByName = new Map((mediaInsights ?? []).map((i) => [i.file_name, i]));
-  const mediaLines = media.map((m) => {
+  const mediaLines = deferMediaSelection ? [] : media.map((m) => {
     const insight = insightByName.get(m.file_name);
     if (insight) {
       const bestFor = insight.best_for.length ? ` | ideal para: ${insight.best_for.join(", ")}` : "";
@@ -270,7 +278,11 @@ function buildUserPrompt(params: {
     weeklyPlan,
     "",
     "MÍDIAS REAIS DISPONÍVEIS (use os nomes em media_filename):",
-    mediaLines.length ? mediaLines.join("\n") : "- (nenhuma)",
+    deferMediaSelection
+      ? "- A seleção das mídias reais será feita depois por um agente específico, a partir das ideias do pacote. Use media_filename=null."
+      : mediaLines.length
+        ? mediaLines.join("\n")
+        : "- (nenhuma)",
     mediaLines.length
       ? "Se uma mídia tiver lata/refrigerante/logo de terceiro dominante ou elemento que distraia, escolha outra quando possível. Se for secundário, pode usar, mantendo esse elemento fora do foco e sem citar como destaque."
       : "",
@@ -295,6 +307,7 @@ export async function generateFrames(params: {
   mediaInsights?: MediaInsight[];
   brandContext?: BrandContext;
   clientMemory?: ClientLearningMemory;
+  deferMediaSelection?: boolean;
 }): Promise<GenerationResult> {
   const completion = await openai().chat.completions.create({
     model: TEXT_MODEL,

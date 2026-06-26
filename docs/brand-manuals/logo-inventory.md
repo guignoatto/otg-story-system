@@ -17,6 +17,7 @@ Este inventario separa logo oficial de referencia visual. Referencia visual ajud
 | --- | --- | --- | --- |
 | Bella Mamma | `_logos/bella-mama-instagram-profile-reference.jpg` | Referencia publica | Entender simbolo circular, verde/vermelho e linguagem de galeteria tradicional. Solicitar logo oficial. |
 | Churrascaria Santana | `_logos/churrascaria-santana-instagram-profile-reference.jpg` | Referencia publica | Entender combinacao verde/vermelho/amarelo e assinatura simples. Solicitar logo oficial. |
+| Eleve | `_logos/eleve-instagram-profile-reference.jpg` | Referencia publica correta | Perfil confirmado pela OTG. Entender vinho/bordo, creme, mostarda/dourado e lettering artesanal. Solicitar logo oficial em PNG/SVG. |
 | Fornellone | `_logos/fornellone-instagram-profile-reference.jpg` | Referencia publica | Entender marrom escuro, serifado e assinatura italiana. Solicitar logo oficial. |
 | Frango na Brazza | `_logos/frango-na-brazza-instagram-profile-reference.jpg` | Referencia publica correta | Perfil confirmado pela OTG. Entender fundo preto, amarelo/vermelho e mascote/frango. Solicitar logo oficial em PNG/SVG. |
 | Lima's Pizzaria | `_logos/limas-pizzaria-instagram-profile-reference.jpg` | Referencia publica | Entender brasao/ornamento e tons escuros. Site oficial usa identidade preta/amarela. Solicitar logo oficial. |

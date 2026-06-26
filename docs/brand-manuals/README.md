@@ -42,6 +42,7 @@ Quando um restaurante nao tem manual oficial, estes arquivos devem ser tratados 
 | Frango na Brazza | `frango-na-brazza.md` | Media | Instagram profile reference confirmed by OTG |
 | Lima's Pizzaria | `limas-pizzaria.md` | Alta | Instagram profile reference + site oficial sem arquivo claro de logo |
 | Galeteria Bella Mamma | `bella-mama.md` | Media | Instagram profile reference |
+| Eleve | `eleve.md` | Media | Instagram profile reference confirmed by OTG |
 
 ## Arquivos de apoio
 
