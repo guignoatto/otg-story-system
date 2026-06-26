@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { GenerationProgress } from "./GenerationProgress";
-import { isGeneratableMediaAsset, isProbablyLogoAsset, uniqueAssetsById } from "@/lib/asset-classification";
+import { isGeneratableMediaAsset, uniqueAssetsById } from "@/lib/asset-classification";
 import type {
   Asset,
   CampaignObjective,
@@ -37,6 +37,14 @@ type FrameGenerationError = {
 };
 
 type LogoPolicy = "none" | "discreet" | "required" | "source_only";
+type LogoPlacement =
+  | "auto"
+  | "top_left"
+  | "top_center"
+  | "top_right"
+  | "bottom_left"
+  | "bottom_center"
+  | "bottom_right";
 
 type ReferenceItem = {
   asset: Asset;
@@ -114,6 +122,7 @@ export function Studio({ clients }: Props) {
     prompt: string;
     preflight_notes: string[];
     logo_policy: LogoPolicy;
+    logo_placement: LogoPlacement;
   } | null>(null);
   const [loadingPrompt, setLoadingPrompt] = useState(false);
   const [history, setHistory] = useState<StoryPackage[]>([]);
@@ -148,10 +157,9 @@ export function Studio({ clients }: Props) {
         if (!active) return;
         const imageAssets = (mediaData.items ?? []).filter((a: Asset) => a.mime_type.startsWith("image/"));
         const imageMedia = imageAssets.filter(isGeneratableMediaAsset);
-        const inferredLogos = imageAssets.filter(isProbablyLogoAsset);
         const imageLogos = (logoData.items ?? []).filter((a: Asset) => a.mime_type.startsWith("image/"));
         setMedia(imageMedia);
-        setLogos(uniqueAssetsById([...imageLogos, ...inferredLogos]));
+        setLogos(uniqueAssetsById(imageLogos));
         setSelectedMediaIds(
           imageMedia
             .slice(0, mediaSelectionTarget(DEFAULT_BRIEF, false))
@@ -378,7 +386,8 @@ export function Studio({ clients }: Props) {
         frame,
         prompt: data.prompt,
         preflight_notes: Array.isArray(data.preflight_notes) ? data.preflight_notes : [],
-        logo_policy: "discreet",
+        logo_policy: logos.length ? "discreet" : "source_only",
+        logo_placement: "auto",
       });
     } catch (err) {
       setMessage(`Erro ao montar prompt: ${err instanceof Error ? err.message : String(err)}`);
@@ -387,7 +396,12 @@ export function Studio({ clients }: Props) {
     }
   }
 
-  async function generateAi(frame: Frame, promptOverride?: string, logoPolicy: LogoPolicy = "discreet") {
+  async function generateAi(
+    frame: Frame,
+    promptOverride?: string,
+    logoPolicy: LogoPolicy = "discreet",
+    logoPlacement: LogoPlacement = "auto"
+  ) {
     if (!client) return;
     const source = mediaFor(frame);
     if (!source) {
@@ -421,6 +435,7 @@ export function Studio({ clients }: Props) {
           quality: "medium",
           prompt_override: promptOverride,
           logo_policy: logoPolicy,
+          logo_placement: logoPlacement,
         }),
       });
       const data = await res.json();
@@ -925,8 +940,27 @@ export function Studio({ clients }: Props) {
               </select>
               <small>
                 {logos.length
-                  ? "A logo cadastrada será aplicada pelo sistema, sem redesenhar por IA."
-                  : "Cadastre uma logo no cliente para usar as opções discreta ou obrigatória."}
+                  ? "Apenas logos enviadas em Logos oficiais são aplicadas; referências visuais não entram aqui."
+                  : "Este cliente ainda não tem logo oficial cadastrada. Use 'Só preservar se já estiver na foto'."}
+              </small>
+            </label>
+            <label className="field-control logo-policy-control">
+              Posição da logo
+              <select
+                value={promptPreview.logo_placement}
+                disabled={promptPreview.logo_policy === "none" || promptPreview.logo_policy === "source_only"}
+                onChange={(e) => setPromptPreview({ ...promptPreview, logo_placement: e.target.value as LogoPlacement })}
+              >
+                <option value="auto">Automática segura</option>
+                <option value="top_left">Superior esquerda</option>
+                <option value="top_center">Superior centro</option>
+                <option value="top_right">Superior direita</option>
+                <option value="bottom_left">Inferior esquerda</option>
+                <option value="bottom_center">Inferior centro</option>
+                <option value="bottom_right">Inferior direita</option>
+              </select>
+              <small>
+                No automático, o sistema procura uma área limpa e evita a zona de resposta do Instagram.
               </small>
             </label>
             <div className="prompt-modal-actions">
@@ -944,9 +978,9 @@ export function Studio({ clients }: Props) {
                 type="button"
                 className="ai-generate"
                 onClick={() => {
-                  const { frame, prompt, logo_policy } = promptPreview;
+                  const { frame, prompt, logo_policy, logo_placement } = promptPreview;
                   setPromptPreview(null);
-                  void generateAi(frame, prompt, logo_policy);
+                  void generateAi(frame, prompt, logo_policy, logo_placement);
                 }}
               >
                 Gerar imagem

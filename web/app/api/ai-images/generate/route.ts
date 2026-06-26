@@ -16,7 +16,13 @@ import {
   buildFrangoRepairPrompt,
   isFrangoNaBrazzaClient,
 } from "@/lib/generation/frango-safety";
-import { applyOfficialLogo, isLogoPolicy, type LogoPolicy } from "@/lib/generation/logo-overlay";
+import {
+  applyOfficialLogo,
+  isLogoPlacement,
+  isLogoPolicy,
+  type LogoPlacement,
+  type LogoPolicy,
+} from "@/lib/generation/logo-overlay";
 import { openai, IMAGE_MODEL } from "@/lib/openai";
 import { toFile } from "openai";
 
@@ -38,6 +44,7 @@ type Body = {
   quality?: string;
   prompt_override?: string;
   logo_policy?: LogoPolicy;
+  logo_placement?: LogoPlacement;
 };
 
 const MAX_IMAGE_ATTEMPTS = 2;
@@ -243,6 +250,7 @@ export async function POST(req: NextRequest) {
     }
 
     const logoPolicy = isLogoPolicy(body.logo_policy) ? body.logo_policy : "discreet";
+    const logoPlacement = isLogoPlacement(body.logo_placement) ? body.logo_placement : "auto";
     let logoApplied = false;
     let logoFileName: string | null = null;
 
@@ -269,6 +277,7 @@ export async function POST(req: NextRequest) {
           logoBytes,
           logo,
           policy: logoPolicy,
+          placement: logoPlacement,
         });
         logoApplied = true;
         logoFileName = logo.file_name;
@@ -293,7 +302,7 @@ export async function POST(req: NextRequest) {
       size_bytes: pngBytes.byteLength,
       source: "ai",
       notes: logoApplied
-        ? `Imagem gerada com IA a partir de mídia real. Logo oficial aplicada: ${logoFileName}.`
+        ? `Imagem gerada com IA a partir de mídia real. Logo oficial aplicada: ${logoFileName}. Posição: ${logoPlacement}.`
         : "Imagem gerada com IA a partir de mídia real.",
     });
 

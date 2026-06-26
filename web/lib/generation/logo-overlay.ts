@@ -3,9 +3,29 @@ import sharp from "sharp";
 import type { Asset } from "../types";
 
 export type LogoPolicy = "none" | "discreet" | "required" | "source_only";
+export type LogoPlacement =
+  | "auto"
+  | "top_left"
+  | "top_center"
+  | "top_right"
+  | "bottom_left"
+  | "bottom_center"
+  | "bottom_right";
 
 export function isLogoPolicy(value: unknown): value is LogoPolicy {
   return value === "none" || value === "discreet" || value === "required" || value === "source_only";
+}
+
+export function isLogoPlacement(value: unknown): value is LogoPlacement {
+  return (
+    value === "auto" ||
+    value === "top_left" ||
+    value === "top_center" ||
+    value === "top_right" ||
+    value === "bottom_left" ||
+    value === "bottom_center" ||
+    value === "bottom_right"
+  );
 }
 
 type SharpWithAlphaTools = {
@@ -22,8 +42,26 @@ type SharpRawPipeline = {
   raw: () => {
     toBuffer: (options: { resolveWithObject: true }) => Promise<{
       data: Buffer;
-      info: { width: number; height: number };
+      info: { width: number; height: number; channels: number };
     }>;
+  };
+};
+
+type SharpRegionTools = {
+  extract: (options: { left: number; top: number; width: number; height: number }) => {
+    resize: (options: { width: number; height: number; fit: "fill" }) => SharpRawPipeline;
+  };
+};
+
+type SharpShadowTools = {
+  ensureAlpha: () => {
+    modulate: (options: { brightness: number }) => {
+      blur: (sigma: number) => {
+        png: () => {
+          toBuffer: () => Promise<Buffer>;
+        };
+      };
+    };
   };
 };
 
@@ -185,11 +223,136 @@ export async function normalizeLogoPng(bytes: Buffer): Promise<Buffer> {
     .toBuffer();
 }
 
+function logoMaxSize(params: {
+  baseWidth: number;
+  baseHeight: number;
+  logoWidth: number;
+  logoHeight: number;
+  policy: LogoPolicy;
+}): { width: number; height: number } {
+  const { baseWidth, baseHeight, logoWidth, logoHeight, policy } = params;
+  const aspect = logoWidth / Math.max(1, logoHeight);
+  const isSeal = aspect > 0.72 && aspect < 1.35;
+  const widthRatio = policy === "required"
+    ? isSeal ? 0.18 : 0.25
+    : isSeal ? 0.115 : 0.18;
+  const heightRatio = policy === "required"
+    ? isSeal ? 0.12 : 0.09
+    : isSeal ? 0.08 : 0.07;
+  return {
+    width: Math.round(baseWidth * widthRatio),
+    height: Math.round(baseHeight * heightRatio),
+  };
+}
+
+function placementCoordinates(params: {
+  placement: Exclude<LogoPlacement, "auto">;
+  baseWidth: number;
+  baseHeight: number;
+  logoWidth: number;
+  logoHeight: number;
+}): { left: number; top: number } {
+  const { placement, baseWidth, baseHeight, logoWidth, logoHeight } = params;
+  const marginX = Math.round(baseWidth * 0.055);
+  const topSafe = Math.round(baseHeight * 0.085);
+  const bottomSafe = Math.round(baseHeight * 0.18);
+  const yTop = topSafe;
+  const yBottom = Math.max(topSafe, baseHeight - bottomSafe - logoHeight);
+  const xLeft = marginX;
+  const xCenter = Math.round((baseWidth - logoWidth) / 2);
+  const xRight = Math.max(marginX, baseWidth - logoWidth - marginX);
+
+  switch (placement) {
+    case "top_left":
+      return { left: xLeft, top: yTop };
+    case "top_center":
+      return { left: xCenter, top: yTop };
+    case "top_right":
+      return { left: xRight, top: yTop };
+    case "bottom_left":
+      return { left: xLeft, top: yBottom };
+    case "bottom_center":
+      return { left: xCenter, top: yBottom };
+    case "bottom_right":
+      return { left: xRight, top: yBottom };
+  }
+}
+
+async function regionContrastScore(params: {
+  imageBytes: Buffer;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}): Promise<number> {
+  const { imageBytes, left, top, width, height } = params;
+  const sampleWidth = Math.max(8, Math.round(width));
+  const sampleHeight = Math.max(8, Math.round(height));
+  const { data, info } = await (sharp(imageBytes) as unknown as SharpRegionTools)
+    .extract({
+      left: Math.max(0, Math.round(left)),
+      top: Math.max(0, Math.round(top)),
+      width: sampleWidth,
+      height: sampleHeight,
+    })
+    .resize({ width: 24, height: 24, fit: "fill" })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const luminance: number[] = [];
+  for (let index = 0; index < data.length; index += info.channels) {
+    const r = data[index] ?? 0;
+    const g = data[index + 1] ?? 0;
+    const b = data[index + 2] ?? 0;
+    luminance.push(0.299 * r + 0.587 * g + 0.114 * b);
+  }
+  const mean = luminance.reduce((sum, value) => sum + value, 0) / Math.max(1, luminance.length);
+  const variance = luminance.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, luminance.length);
+  // Prefer calmer, mid-contrast areas. Busy/high-variance areas make logos look pasted.
+  return Math.sqrt(variance) + Math.abs(mean - 128) * 0.12;
+}
+
+async function resolveAutoPlacement(params: {
+  imageBytes: Buffer;
+  baseWidth: number;
+  baseHeight: number;
+  logoWidth: number;
+  logoHeight: number;
+  policy: LogoPolicy;
+}): Promise<Exclude<LogoPlacement, "auto">> {
+  const candidates: Exclude<LogoPlacement, "auto">[] = params.policy === "required"
+    ? ["top_center", "top_left", "top_right", "bottom_center"]
+    : ["top_right", "top_left", "top_center"];
+  const scored = await Promise.all(candidates.map(async (placement) => {
+    const coords = placementCoordinates({ ...params, placement });
+    const score = await regionContrastScore({
+      imageBytes: params.imageBytes,
+      left: coords.left,
+      top: coords.top,
+      width: params.logoWidth,
+      height: params.logoHeight,
+    }).catch(() => 999);
+    return { placement, score };
+  }));
+  scored.sort((a, b) => a.score - b.score);
+  return scored[0]?.placement ?? "top_right";
+}
+
+async function addLogoDropShadow(logoBytes: Buffer): Promise<Buffer> {
+  return (sharp(logoBytes) as unknown as SharpShadowTools)
+    .ensureAlpha()
+    .modulate({ brightness: 0 })
+    .blur(4)
+    .png()
+    .toBuffer();
+}
+
 export async function applyOfficialLogo(params: {
   imageBytes: Buffer;
   logoBytes: Buffer;
   logo: Asset;
   policy: LogoPolicy;
+  placement?: LogoPlacement;
 }): Promise<Buffer> {
   const { imageBytes, logoBytes, policy } = params;
   if (policy === "none" || policy === "source_only") return imageBytes;
@@ -197,31 +360,47 @@ export async function applyOfficialLogo(params: {
   const baseMeta = await sharp(imageBytes).metadata();
   const baseWidth = baseMeta.width ?? 1024;
   const baseHeight = baseMeta.height ?? 1536;
-  const maxLogoWidth = Math.round(baseWidth * (policy === "required" ? 0.18 : 0.14));
-  const maxLogoHeight = Math.round(baseHeight * 0.08);
-  const margin = Math.round(baseWidth * 0.055);
   const tightLogo = await removeBackgroundAndTrimEdges(logoBytes);
+  const sourceLogoMeta = await sharp(tightLogo).metadata();
+  const maxSize = logoMaxSize({
+    baseWidth,
+    baseHeight,
+    logoWidth: sourceLogoMeta.width ?? 1600,
+    logoHeight: sourceLogoMeta.height ?? 1600,
+    policy,
+  });
 
   const normalizedLogo = await sharp(tightLogo)
     .rotate()
     .resize({
-      width: maxLogoWidth,
-      height: maxLogoHeight,
+      width: maxSize.width,
+      height: maxSize.height,
       fit: "inside",
       withoutEnlargement: true,
     })
     .png()
     .toBuffer();
   const logoMeta = await sharp(normalizedLogo).metadata();
-  const logoWidth = logoMeta.width ?? maxLogoWidth;
-  const logoHeight = logoMeta.height ?? maxLogoHeight;
+  const logoWidth = logoMeta.width ?? maxSize.width;
+  const logoHeight = logoMeta.height ?? maxSize.height;
+  const requestedPlacement = params.placement ?? "auto";
+  const placement = requestedPlacement === "auto"
+    ? await resolveAutoPlacement({ imageBytes, baseWidth, baseHeight, logoWidth, logoHeight, policy })
+    : requestedPlacement;
+  const coords = placementCoordinates({ placement, baseWidth, baseHeight, logoWidth, logoHeight });
+  const shadow = await addLogoDropShadow(normalizedLogo);
 
   return sharp(imageBytes)
     .composite([
       {
+        input: shadow,
+        left: coords.left + Math.max(2, Math.round(baseWidth * 0.004)),
+        top: coords.top + Math.max(2, Math.round(baseHeight * 0.003)),
+      },
+      {
         input: normalizedLogo,
-        left: Math.max(margin, baseWidth - logoWidth - margin),
-        top: Math.max(margin, baseHeight - logoHeight - margin),
+        left: coords.left,
+        top: coords.top,
       },
     ])
     .png()

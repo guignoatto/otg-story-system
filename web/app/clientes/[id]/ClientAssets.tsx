@@ -188,7 +188,7 @@ export function ClientAssets({ clientId, initialMedia, initialManuals, initialLo
         <div className="card-title">
           <div>
             <span>Logos oficiais</span>
-            <small>Imagem da logo — o sistema salva como PNG sem fundo e aplica depois da IA</small>
+            <small>Envie só o arquivo da marca — o sistema converte para PNG sem fundo e cola depois da IA</small>
           </div>
         </div>
         <input

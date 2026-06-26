@@ -24,16 +24,9 @@ function asStringArray(value: unknown): string[] {
 function looksLikeLogoAsset(row: AssetRow): boolean {
   const text = [
     row.role,
-    row.file_name,
-    row.storage_path,
     row.notes ?? "",
-    row.extracted_text_preview ?? "",
   ].join(" ");
-  return (
-    /\[asset_type:logo\]/i.test(text) ||
-    /(^|[\s._-])(logo|logotipo|logomarca|wordmark|s[íi]mbolo|[íi]cone|assinatura)([\s._-]|$)/i.test(text) ||
-    /\b(png\s*transparente|sem\s*fundo)\b/i.test(text)
-  );
+  return row.role === "logo" || /\[asset_type:logo\]/i.test(text) || /(^|\/)logo\//i.test(row.storage_path);
 }
 
 export function mapClient(row: ClientRow): ClientProfile {

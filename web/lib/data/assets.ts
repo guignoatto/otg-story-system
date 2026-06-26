@@ -3,6 +3,13 @@ import { supabaseAdmin } from "../supabase/server";
 import { mapAsset } from "../mappers";
 import type { Asset, AssetRole } from "../types";
 
+function isOfficialLogoAsset(asset: Asset): boolean {
+  return asset.role === "logo" && (
+    /\[asset_type:logo\]/i.test(asset.notes ?? "") ||
+    /(^|\/)logo\//i.test(asset.storage_path)
+  );
+}
+
 export async function listAssets(clientId: string, role?: AssetRole): Promise<Asset[]> {
   let query = supabaseAdmin()
     .from("assets")
@@ -13,7 +20,7 @@ export async function listAssets(clientId: string, role?: AssetRole): Promise<As
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   const mapped = (data ?? []).map(mapAsset);
-  if (role === "logo") return mapped.filter((asset) => asset.role === "logo");
+  if (role === "logo") return mapped.filter(isOfficialLogoAsset);
   if (role === "media") return mapped.filter((asset) => asset.role !== "logo");
   return mapped;
 }
