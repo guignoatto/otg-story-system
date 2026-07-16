@@ -1,6 +1,7 @@
 import "server-only";
 import sharp from "sharp";
 import heicConvert from "heic-convert";
+import { getImageOutputSpec } from "./image-output";
 
 type SharpPipeline = ReturnType<typeof sharp>;
 type SharpWithExtract = SharpPipeline & {
@@ -45,13 +46,17 @@ export async function prepareSourceImage(params: {
  * Reenquadra fotos do Frango na Brazza para priorizar o prato e reduzir
  * elementos de fundo que costumam virar protagonistas na geração.
  */
-export async function prepareFrangoMealFocusImage(pngBytes: Buffer): Promise<Buffer> {
+export async function prepareFrangoMealFocusImage(
+  pngBytes: Buffer,
+  outputFormat = "stories"
+): Promise<Buffer> {
   const meta = await sharp(pngBytes).rotate().metadata();
   const width = meta.width ?? 0;
   const height = meta.height ?? 0;
   if (!width || !height) return pngBytes;
 
-  const targetAspect = 2 / 3;
+  const outputSpec = getImageOutputSpec(outputFormat);
+  const targetAspect = outputSpec.exportWidth / outputSpec.exportHeight;
   const cropWidth = Math.max(1, Math.min(width, Math.round(width * 0.7)));
   const cropHeight = Math.max(1, Math.min(height, Math.round(cropWidth / targetAspect)));
   const left = Math.max(0, Math.min(width - cropWidth, Math.round(width * 0.3)));
@@ -59,7 +64,11 @@ export async function prepareFrangoMealFocusImage(pngBytes: Buffer): Promise<Buf
 
   return (sharp(pngBytes).rotate() as unknown as SharpWithExtract)
     .extract({ left, top, width: cropWidth, height: cropHeight })
-    .resize({ width: 1024, height: 1536, fit: "cover" })
+    .resize({
+      width: outputSpec.exportWidth,
+      height: outputSpec.exportHeight,
+      fit: "cover",
+    })
     .png()
     .toBuffer();
 }

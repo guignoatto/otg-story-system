@@ -9,6 +9,10 @@ import {
   prepareFrangoMealFocusImage,
   prepareSourceImage,
 } from "@/lib/generation/image";
+import {
+  getImageOutputSpec,
+  normalizeImageOutput,
+} from "@/lib/generation/image-output";
 import { runImageOutputQA } from "@/lib/generation/agents/image-output-qa";
 import { runSourceImageQA } from "@/lib/generation/agents/source-image-qa";
 import {
@@ -109,6 +113,7 @@ export async function POST(req: NextRequest) {
     }
 
     let sourceBytes = await downloadFromStorage(source.storage_path);
+    const outputSpec = getImageOutputSpec(body.output_format);
     let prepared = await prepareSourceImage({
       bytes: sourceBytes,
       mimeType: source.mime_type,
@@ -180,7 +185,7 @@ export async function POST(req: NextRequest) {
           "A foto fonte tem lata/refrigerante com risco de destaque, mas a geração foi permitida. O guardião final só deve barrar se a arte gerada transformar isso em protagonista."
         );
       }
-      generationSource = await prepareFrangoMealFocusImage(prepared);
+      generationSource = await prepareFrangoMealFocusImage(prepared, outputSpec.format);
       preflightNotes.push(
         "A foto fonte foi reenquadrada automaticamente para priorizar o prato e reduzir placa, lata ou texto de fundo antes da geração."
       );
@@ -193,7 +198,7 @@ export async function POST(req: NextRequest) {
       cta: body.cta || "",
       visual_direction: body.visual_direction || "",
       layout_style: body.layout_style || "editorial",
-      output_format: body.output_format || "stories",
+      output_format: outputSpec.format,
       objective: body.objective,
       story_type: body.story_type,
       offer: body.offer,
@@ -217,7 +222,7 @@ export async function POST(req: NextRequest) {
         model: IMAGE_MODEL,
         image: imageFile,
         prompt: attempt === 1 ? basePrompt : retryPrompt(generatedPrompt, lastImageQa, frangoClient),
-        size: "1024x1536",
+        size: outputSpec.generationSize,
         quality: (body.quality as "low" | "medium" | "high") || "high",
         // Preserva fielmente o produto/logo da foto original (igual ChatGPT).
       });
@@ -284,6 +289,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // A API gera no canvas de trabalho da proporcao correta; o arquivo salvo
+    // sempre sai no tamanho oficial de publicacao do Instagram.
+    pngBytes = await normalizeImageOutput({ bytes: pngBytes, spec: outputSpec });
+
     const stored = await uploadToStorage({
       clientSlug: client.slug,
       role: "ai",
@@ -302,15 +311,22 @@ export async function POST(req: NextRequest) {
       size_bytes: pngBytes.byteLength,
       source: "ai",
       notes: logoApplied
-        ? `Imagem gerada com IA a partir de mídia real. Logo oficial aplicada: ${logoFileName}. Posição: ${logoPlacement}.`
-        : "Imagem gerada com IA a partir de mídia real.",
+        ? `Imagem gerada com IA a partir de mídia real em ${outputSpec.exportWidth}x${outputSpec.exportHeight} (${outputSpec.aspectRatio}). Logo oficial aplicada: ${logoFileName}. Posição: ${logoPlacement}.`
+        : `Imagem gerada com IA a partir de mídia real em ${outputSpec.exportWidth}x${outputSpec.exportHeight} (${outputSpec.aspectRatio}).`,
     });
 
     if (body.frame_id) {
       await updateFrameAiAsset(body.frame_id, asset.id);
     }
 
-    return NextResponse.json({ asset, image_url: asset.public_url, file_name: asset.file_name });
+    return NextResponse.json({
+      asset,
+      image_url: asset.public_url,
+      file_name: asset.file_name,
+      width: outputSpec.exportWidth,
+      height: outputSpec.exportHeight,
+      aspect_ratio: outputSpec.aspectRatio,
+    });
   } catch (err) {
     return NextResponse.json(
       {

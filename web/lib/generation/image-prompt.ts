@@ -129,7 +129,9 @@ export function buildImagePrompt(input: ImageBriefInput): string {
   const isFrango = isFrangoNaBrazzaClient(client);
   const deliveryNight = isDeliveryNight(client);
   const formatNote =
-    output_format === "stories" ? "vertical Instagram story 9:16" : "vertical carousel cover 4:5";
+    output_format === "stories"
+      ? "vertical Instagram story in exact 9:16 aspect ratio (1152x2048 working canvas)"
+      : "vertical carousel cover in exact 4:5 aspect ratio (1280x1600 working canvas)";
   const colors = client.color_palette.length
     ? client.color_palette.slice(0, 5)
     : ["#0B2A1E", "#4598B2", "#F0B05F"];
