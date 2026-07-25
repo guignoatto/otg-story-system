@@ -2,7 +2,7 @@
 
 Este pacote substitui a ideia de "manual sintetico generico" por guias operacionais de marca para IA. O objetivo nao e fingir que existe um brandbook oficial: e dar aos agentes do sistema regras fortes o suficiente para gerar Stories organicos sem descaracterizar cada restaurante.
 
-Data da montagem: 2026-06-22.
+Data da montagem inicial: 2026-06-22. Atualizado com Bar i Bar em 2026-07-25.
 
 ## Regra principal
 
@@ -43,6 +43,7 @@ Quando um restaurante nao tem manual oficial, estes arquivos devem ser tratados 
 | Lima's Pizzaria | `limas-pizzaria.md` | Alta | Instagram profile reference + site oficial sem arquivo claro de logo |
 | Galeteria Bella Mamma | `bella-mama.md` | Media | Instagram profile reference |
 | Eleve | `eleve.md` | Media | Instagram profile reference confirmed by OTG |
+| Bar i Bar | `bari-bar-411.md` | Media | Instagram profile reference confirmed by OTG |
 
 ## Arquivos de apoio
 

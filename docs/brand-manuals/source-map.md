@@ -1,6 +1,6 @@
 # Mapa de fontes publicas
 
-Data da consulta: 2026-06-22.
+Data da consulta inicial: 2026-06-22. Bar i Bar consultado em 2026-07-25.
 
 Estas fontes foram usadas apenas para criar manuais v1. Quando o cliente enviar material oficial, ele deve substituir estes dados.
 
@@ -61,3 +61,10 @@ Estas fontes foram usadas apenas para criar manuais v1. Quando o cliente enviar 
 - Instagram oficial informado pela OTG: https://www.instagram.com/eleveoficialbr/
 - Informacoes usadas: bio publica com "ELEVE | Comida de Verdade", "Marmitas congeladas artesanais", "Prontas em minutos", "Canoas/RS - entregas sob consulta"; destaques publicos Bastidores, Cardapio e Entregas; posts publicos com assinatura "comida de verdade para os dias corridos".
 - Nivel: medio. O perfil correto foi confirmado pela OTG, mas cardapio, dias de entrega, area de entrega, taxa, prazo e logo oficial em alta ainda devem ser validados antes de criativos comerciais.
+
+## Bar i Bar
+
+- Instagram oficial informado pela OTG: https://www.instagram.com/baribar411/
+- Informacoes usadas: nome publico "Bar i Bar - Porto Alegre"; publicacoes recentes sobre operacao noturna e fome da madrugada; divulgacao de funcionamento ate as 7h; pizza, xis, petiscos, a la minuta, cerveja, chopp e refrigerante; sinuca, karaoke, futebol e encontro entre amigos.
+- Identidade visual usada: perfil e publicacoes publicas com amarelo/laranja, preto e vermelho, tipografia condensada de alto impacto e logo de lettering misto.
+- Nivel: medio. Horario, endereco, cardapio, promocoes e programacao podem mudar e precisam de briefing atual. A abertura durante a tarde encontrada no perfil era especifica para uma transmissao esportiva e nao foi tratada como operacao regular.
